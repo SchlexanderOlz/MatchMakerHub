@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ./api
+    image: cloudolife/col-rust-docker
+    name: matchmaker-api
+    command: cargo run
+    ports:
+    - "4000:4000"
+    restart: on-failure
+    volumes:
+      - "./api:/usr/api"
+    environment:
+      - HOST_URL=0.0.0.0:4000
