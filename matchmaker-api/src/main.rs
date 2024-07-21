@@ -6,7 +6,34 @@ use socketioxide::{
 };
 use tracing::info;
 use tracing_subscriber::FmtSubscriber;
+use serde::{Deserialize, Serialize};
 
+
+#[derive(Deserialize)]
+pub struct GameMode(String);
+
+
+#[derive(Deserialize)]
+pub struct Search {
+    pub player_id: String, 
+    pub game: String,
+    pub mode: GameMode,
+}
+
+
+#[derive(Deserialize)]
+pub struct Host {
+    pub player_id: String, 
+    pub invite_players: Vec<String>,
+    pub game: String,
+    pub config: Value
+}
+
+
+#[derive(Deserialize)]
+pub struct DirectConnect {
+    pub write_key: String,
+}
 
 fn on_match_search(socket: SocketRef, Data(data): Data<Value>) {
     info!("Socket.IO connected: {:?} {:?}", socket.ns(), socket.id);
@@ -14,7 +41,9 @@ fn on_match_search(socket: SocketRef, Data(data): Data<Value>) {
 
 
     // TODO: The client sends information about the search. For example the target game and configurations for the game (like f.e. multiplayer or 2-player)
-    socket.on("search", |socket: SocketRef, Data::<Value>(data), Bin(bin)| {});
+    socket.on("search", |socket: SocketRef, Data::<Search>(data), Bin(bin)| {});
+    socket.on("host", |socket: SocketRef, Data::<Host>(data), Bin(bin)| {});
+    socket.on("join", |socket: SocketRef, Data::<DirectConnect>(data), Bin(bin)| {});
 
     // TODO: The client returns the available servers ranked by ping
     socket.on("servers", |socket: SocketRef, Data::<Value>(data), Bin(bin)| {});

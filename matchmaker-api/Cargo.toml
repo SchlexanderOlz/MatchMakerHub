@@ -1,10 +1,11 @@
 [package]
-name = "api"
+name = "matchmaker-api"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 axum = "0.7.5"
+serde = { version = "1.0.204", features = ["derive"] }
 serde_json = "1.0.120"
 socketioxide = "0.14.0"
 tokio = { version = "1.38.1", features = ["rt", "macros", "rt-multi-thread"] }
