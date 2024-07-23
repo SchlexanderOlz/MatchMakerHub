@@ -12,3 +12,9 @@ impl RedisNameable for models::DBGameServer {
     }
 }
 
+impl RedisNameable for models::GameServer {
+    fn name() -> String {
+        "game_server".to_owned()
+    }
+}
+

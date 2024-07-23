@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{self, Index};
 
-// InsertWriter currently only supports structs with fields that are either primitive types or implement RedisInsertWriter.
+// InsertWriter currently only supports structs with fields implement ToRedisArgs
 #[proc_macro_derive(RedisInsertWriter)]
 pub fn insert_writer_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
