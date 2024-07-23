@@ -1,6 +1,6 @@
 use redis::{from_redis_value, FromRedisValue, RedisResult, RedisWrite, ToRedisArgs, Value};
 use serde::{Deserialize, Serialize};
-use redisadapter_derive::RedisInsertWriter;
+use redisadapter_derive::{RedisInsertWriter, RedisOutputReader};
 
 #[derive(Debug, Clone, RedisInsertWriter)]
 pub struct GameServer {
@@ -10,8 +10,9 @@ pub struct GameServer {
     pub token: String, // Token to authorize as the main-server at this game-server
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, RedisOutputReader)]
 pub struct DBGameServer {
+    #[uuid]
     pub uuid: String,
     pub name: String,
     pub modes: Vec<GameMode>,
