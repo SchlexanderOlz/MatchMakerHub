@@ -1,7 +1,3 @@
-use std::{fmt::Debug, ops::Neg};
-
-use redis::Iter;
-
 pub mod adapters;
 pub mod models;
 

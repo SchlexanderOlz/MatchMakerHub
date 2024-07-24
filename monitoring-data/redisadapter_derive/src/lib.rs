@@ -2,10 +2,9 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{self, Index};
+use syn;
 
-// InsertWriter currently only supports structs with fields implement ToRedisArgs
-#[proc_macro_derive(RedisInsertWriter)]
+#[proc_macro_derive(RedisInsertWriter, attributes(name))]
 pub fn insert_writer_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
     impl_insert_writer(&ast)
@@ -24,10 +23,19 @@ fn impl_insert_writer(ast: &syn::DeriveInput) -> TokenStream {
         _ => panic!("Only structs are supported"),
     };
 
+    
+    let mut db_name = format!("{}s", name.to_string().to_lowercase());
+    ast.attrs.iter().for_each(|attr| {
+        if attr.path.is_ident("name") {
+            db_name = attr.parse_args::<syn::LitStr>().unwrap().value();
+        }
+    });
+
+
     let sets: Vec<proc_macro2::TokenStream> = data.fields.iter().map(|field| {
         let field_name = field.ident.as_ref().unwrap();
         quote! {
-            pipe.set(format!("{base_key}:{}", stringify!(#field_name)), self.#field_name.clone());
+            self.#field_name.write(pipe, format!("{base_key}:{}", stringify!(#field_name)).as_str())?;
         }
 
     }).collect();
@@ -66,45 +74,16 @@ fn impl_output_reader(ast: &syn::DeriveInput) -> TokenStream {
         .filter(|x| uuid_field == None || x.ident.as_ref().unwrap() != uuid_field.unwrap())
         .map(|field| {
             let field_name = field.ident.as_ref().unwrap();
-            quote! {
-                pipe.get(format!("{base_key}:{}", stringify!(#field_name)));
-            }
-        })
-        .collect();
-
-    let output_types: Vec<proc_macro2::TokenStream> = data
-        .fields
-        .iter()
-        .filter(|x| uuid_field == None || x.ident.as_ref().unwrap() != uuid_field.unwrap())
-        .map(|field| {
             let ty = &field.ty;
             quote! {
-                #ty
-            }
-        })
-        .collect();
-
-    let output: Vec<proc_macro2::TokenStream> = data
-        .fields
-        .iter()
-        .filter(|x| uuid_field == None || x.ident.as_ref().unwrap() != uuid_field.unwrap())
-        .enumerate()
-        .map(|(i, field)| {
-            let field_name = field.ident.as_ref();
-            if field_name.is_none() {
-                panic!("Only named fields are supported");
-            }
-            let field_name = field_name.unwrap();
-            let index = Index::from(i);
-            quote! {
-                #field_name: res.#index
+                #field_name: <#ty as crate::adapters::redis::RedisOutputReader>::read(connection, &format!("{base_key}:{}", stringify!(#field_name)))?
             }
         })
         .collect();
 
     let uuid_code = match uuid_field {
         Some(field) => quote! {
-            #field: base_key.to_owned()
+            #field: base_key.to_owned(),
         },
         None => quote! {},
     };
@@ -112,14 +91,9 @@ fn impl_output_reader(ast: &syn::DeriveInput) -> TokenStream {
     let gen = quote! {
         impl crate::adapters::redis::RedisOutputReader for #name {
             fn read(connection: &mut redis::Connection, base_key: &str) -> Result<Self, Box<dyn std::error::Error>> {
-                let mut pipe = redis::pipe();
-                pipe.atomic();
-                #(#sets)*;
-                let res: (#(#output_types),*) = pipe.query(connection)?;
-
                 Ok(Self {
-                    #uuid_code,
-                    #(#output),*
+                    #uuid_code
+                    #(#sets),*
                 })
             }
         }

@@ -5,7 +5,7 @@ services:
     build:
       context: ./matchmaker-api
     image: cloudolife/col-rust-docker
-    name: matchmaker-api
+    container_name: matchmaker-api
     command: cargo run
     ports:
     - "4000:4000"
@@ -14,3 +14,20 @@ services:
       - "./matchmaker-api:/usr/matchmaker-api"
     environment:
       - HOST_URL=0.0.0.0:4000
+
+  monitoring_db:
+    image: redis:latest
+    container_name: monitoring_db
+    ports:
+      - "6379:6379"
+    volumes:
+      - monitoring_data:/data
+    networks:
+      - redis_network
+
+volumes:
+  monitoring_data:
+
+networks:
+  redis_network:
+    driver: bridge

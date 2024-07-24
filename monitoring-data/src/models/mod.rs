@@ -1,8 +1,7 @@
-use redis::{from_redis_value, FromRedisValue, RedisResult, RedisWrite, ToRedisArgs, Value};
 use serde::{Deserialize, Serialize};
 use redisadapter_derive::{RedisInsertWriter, RedisOutputReader};
 
-use crate::adapters::Filter;
+use crate::adapters::{Filter};
 
 #[derive(Debug, Clone, RedisInsertWriter)]
 pub struct GameServer {
@@ -36,45 +35,13 @@ impl Filter<DBGameServer> for GameServerFilter {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, RedisInsertWriter, RedisOutputReader)]
 pub struct GameMode {
     pub name: String,
     pub player_count: u32,
-    pub computer_lobby: bool,
+    pub computer_lobby: bool
 }
 
-
-// TODO: Switch to more convient method if possible
-impl ToRedisArgs for GameMode {
-    fn write_redis_args<W>(&self, out: &mut W) 
-    where
-        W: ?Sized + RedisWrite,
-    {
-
-        out.write_arg(vec![
-            self.name.as_bytes(),
-            &[0x0],
-            self.player_count.to_be_bytes().as_ref(),
-            &[self.computer_lobby as u8],
-        ].concat().as_slice());
-    }
-}
-
-// TODO: Switch to more convient method if possible
-impl FromRedisValue for GameMode {
-    fn from_redis_value(v: &Value) -> RedisResult<Self> {
-        let vec: Vec<u8> = from_redis_value(v)?;
-
-        println!("{:?}", vec);
-
-        let idx = vec.iter().position(|x| *x == 0x0).unwrap().clone();
-        let name: String = unsafe { String::from_utf8_unchecked(vec[..idx].to_vec()) };
-        let player_count: u32 = u32::from_be_bytes([vec[idx], vec[idx + 1], vec[idx + 2], vec[idx + 3]]);
-        let computer_lobby: bool = vec[idx + 4] == 0x1;
-
-        Ok(GameMode { name, player_count, computer_lobby })
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Searcher {
