@@ -83,7 +83,7 @@ fn impl_output_reader(ast: &syn::DeriveInput) -> TokenStream {
 
     let uuid_code = match uuid_field {
         Some(field) => quote! {
-            #field: base_key.to_owned(),
+            #field: base_key.split(":").next().ok_or("Key is invalid")?.to_owned(),
         },
         None => quote! {},
     };

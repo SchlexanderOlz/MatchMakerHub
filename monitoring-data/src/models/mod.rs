@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use redisadapter_derive::{RedisInsertWriter, RedisOutputReader};
 
-use crate::adapters::{Filter};
+use crate::adapters::redis::RedisFilter;
+
 
 #[derive(Debug, Clone, RedisInsertWriter)]
 pub struct GameServer {
@@ -26,7 +27,7 @@ pub struct GameServerFilter {
     pub game: Option<String>,
 }
 
-impl Filter<DBGameServer> for GameServerFilter {
+impl RedisFilter<DBGameServer> for GameServerFilter {
     fn is_ok(&self, check: &DBGameServer) -> bool {
         if self.game.is_none() {
             return true;

@@ -1,8 +1,8 @@
 // NOTE: The content of this file is, in best case, temporary and will be rewritten to automated proc-macros
 
-use redis::{Commands, Connection, FromRedisValue, ToRedisArgs};
+use redis::{Commands, Connection};
 
-use crate::models::{self, GameMode};
+use crate::models;
 
 use super::{RedisInsertWriter, RedisNameable, RedisOutputReader};
 
@@ -54,7 +54,8 @@ where
     }
 }
 
-macro_rules! impl_redis_writer_primitve {
+
+macro_rules! impl_redis_writer_primitive {
     ($($type:ty),*) => {
         $(
             impl RedisInsertWriter for $type {
@@ -67,7 +68,7 @@ macro_rules! impl_redis_writer_primitve {
     };
 }
 
-macro_rules! impl_redis_reader_primitve {
+macro_rules! impl_redis_reader_primitive {
     ($($type:ty),*) => {
         $(
             impl RedisOutputReader for $type {
@@ -79,9 +80,9 @@ macro_rules! impl_redis_reader_primitve {
     };
 }
 
-impl_redis_writer_primitve!(
+impl_redis_writer_primitive!(
     bool, i8, i16, i32, i64, isize, u8, u16, u32, u64, f32, f64, String, usize
 );
-impl_redis_reader_primitve!(
+impl_redis_reader_primitive!(
     bool, i8, i16, i32, i64, isize, u8, u16, u32, u64, f32, f64, String, usize
 );

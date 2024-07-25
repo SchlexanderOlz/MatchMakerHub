@@ -1,9 +1,7 @@
-use super::{DataAdapter, Filter, Insertable, Removable, Searchable};
-use crate::models::{self, GameMode};
+use super::{DataAdapter, Gettable, Insertable, Removable, Searchable};
 use redis::{Commands, Connection, Pipeline};
 
 mod io;
-
 
 pub struct RedisAdapter {
     pub client: redis::Client,
@@ -18,6 +16,10 @@ impl RedisAdapter {
             client,
         })
     }
+}
+
+pub trait RedisFilter<T> {
+    fn is_ok(&self, check: &T) -> bool;
 }
 
 pub trait RedisNameable {
@@ -38,9 +40,22 @@ where
     ) -> Result<Self, Box<dyn std::error::Error>>;
 }
 
-impl Removable for RedisAdapter {
-    fn remove(&mut self, uuid: String) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(self.connection.del(uuid)?)
+impl Removable for RedisAdapter
+{
+    fn remove(&mut self, uuid: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let iter = self
+            .connection
+            .scan_match(format!("{}:*", uuid))?
+            .into_iter()
+            .collect::<Vec<String>>();
+
+        redis::transaction(&mut self.connection, iter.as_slice(), |conn, pipe| {
+            iter.iter().for_each(|key| {
+                pipe.del(key).ignore();
+            });
+            pipe.query(conn)
+        })?;
+        Ok(())
     }
 }
 
@@ -48,7 +63,7 @@ impl<T> Insertable<T> for RedisAdapter
 where
     T: RedisInsertWriter + RedisNameable + Clone,
 {
-    fn insert(&mut self, data: T) -> Result<(), Box<dyn std::error::Error>> {
+    fn insert(&mut self, data: T) -> Result<String, Box<dyn std::error::Error>> {
         let counter: i64 = self.connection.incr("uuid_inc", 1)?;
         let key = format!("{}:{}", counter, T::name());
 
@@ -58,19 +73,40 @@ where
         pipe.set(key, "");
         pipe.query(&mut self.connection)?;
 
-        Ok(())
+        Ok(counter.to_string())
+    }
+}
+
+impl<O> Gettable<O> for RedisAdapter
+where
+    O: RedisOutputReader + RedisNameable,
+{
+    fn all(&mut self) -> Result<impl Iterator<Item = O>, Box<dyn std::error::Error>> {
+        let mut iter: redis::Iter<String> =
+            self.connection.scan_match(format!("*:{}", O::name()))?;
+        let mut connection = self.client.get_connection()?;
+
+        let iter = std::iter::from_fn(move || {
+            if let Some(key) = iter.next() {
+                let res = O::read(&mut connection, &key).ok()?;
+                return Some(res);
+            }
+            None
+        });
+
+        Ok(iter)
+    }
+
+    fn get(&mut self, uuid: &str) -> Result<O, Box<dyn std::error::Error>> {
+        O::read(&mut self.connection, &format!("{uuid}:{}", O::name()))
     }
 }
 
 impl<O, F> Searchable<O, F> for RedisAdapter
 where
     O: RedisOutputReader + RedisNameable,
-    F: Filter<O> + Default,
+    F: RedisFilter<O> + Default,
 {
-    fn all(&mut self) -> Result<impl Iterator<Item = O>, Box<dyn std::error::Error>> {
-        self.filter(F::default())
-    }
-
     fn filter(&mut self, filter: F) -> Result<impl Iterator<Item = O>, Box<dyn std::error::Error>> {
         let mut iter: redis::Iter<String> =
             self.connection.scan_match(format!("*:{}", O::name()))?;
@@ -88,18 +124,12 @@ where
 
         Ok(iter)
     }
-
-    fn get(&mut self, uuid: String) -> Result<O, Box<dyn std::error::Error>> {
-        O::read(&mut self.connection, &uuid)
-    }
 }
 
 impl<T, O, F> DataAdapter<T, O, F> for RedisAdapter
 where
     T: Clone + RedisInsertWriter + RedisNameable,
-    F: Filter<O> + Default,
-    O: RedisOutputReader + RedisNameable,
+    F: RedisFilter<O> + Default,
+    O: RedisOutputReader + RedisNameable, // TODO: The Deletable should not be in the same trait as T
 {
 }
-
-
