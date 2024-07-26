@@ -44,12 +44,11 @@ where
     ) -> Result<Self, Box<dyn std::error::Error>>;
 }
 
-impl Removable for RedisAdapter
-{
+impl Removable for RedisAdapter {
     fn remove(&mut self, uuid: &str) -> Result<(), Box<dyn std::error::Error>> {
         let iter = self
             .connection
-            .scan_match(format!("{}:*", uuid))?
+            .scan_match(format!("{}*", uuid))?
             .into_iter()
             .collect::<Vec<String>>();
 
@@ -68,16 +67,23 @@ where
     T: RedisInsertWriter + RedisIdentifiable + Clone,
 {
     fn insert(&mut self, data: T) -> Result<String, Box<dyn std::error::Error>> {
-        let counter: i64 = self.connection.incr("uuid_inc", 1)?;
-        let key = format!("{}:{}", counter, T::name());
+        let key = T::next_uuid(&mut self.connection)?;
 
         let mut pipe = redis::pipe();
         pipe.atomic();
         data.write(&mut pipe, &key)?;
-        pipe.set(key, "");
+        pipe.set(key.clone(), "");
         pipe.query(&mut self.connection)?;
 
-        Ok(counter.to_string())
+        let mut split = key.split(":");
+        Ok(split
+            .next()
+            .expect(format!("Invalid id on object of type {}", T::name()).as_str())
+            .to_string()
+            + ":"
+            + split
+                .next()
+                .expect(format!("Invalid id on object of type {}", T::name()).as_str()))
     }
 }
 
@@ -102,7 +108,7 @@ where
     }
 
     fn get(&mut self, uuid: &str) -> Result<O, Box<dyn std::error::Error>> {
-        O::read(&mut self.connection, &format!("{uuid}:{}", O::name()))
+        O::read(&mut self.connection, uuid)
     }
 }
 
