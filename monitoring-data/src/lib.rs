@@ -1,18 +1,17 @@
 pub mod adapters;
 pub mod models;
 
-const BASE_SERVER: &str = "127.0.0.1:3456"; // TODO: Default server address should later be changed to a hostname resolved by a dns
-
 #[cfg(test)]
 mod tests {
     use std::error::Error;
 
     use crate::{
-        adapters::{Insertable, Removable, Searchable, Gettable},
-        models::{DBGameServer, GameMode, GameServerFilter},
+        adapters::{Gettable, Insertable, Removable},
+        models::{DBGameServer, GameMode},
     };
 
     #[test]
+    #[cfg(feature = "redis")]
 
     fn test_redis_adapter_insert_game_server() {
         use crate::adapters::redis::RedisAdapter;
@@ -35,6 +34,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "redis")]
     fn test_redis_adapter_all_game_server() {
         use crate::adapters::redis::RedisAdapter;
         use crate::models::GameServer;
@@ -53,10 +53,7 @@ mod tests {
         };
         adapter.insert(game_server.clone()).unwrap();
 
-        let found_server = adapter
-            .all()
-            .unwrap()
-            .collect::<Vec<DBGameServer>>();
+        let found_server = adapter.all().unwrap().collect::<Vec<DBGameServer>>();
 
         for game in &found_server {
             println!("{:?}", game);
@@ -67,6 +64,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "redis")]
     fn test_redis_adapter_remove_game_server() {
         use crate::adapters::redis::RedisAdapter;
         use crate::models::GameServer;

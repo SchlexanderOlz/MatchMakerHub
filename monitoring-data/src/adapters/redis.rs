@@ -22,8 +22,12 @@ pub trait RedisFilter<T> {
     fn is_ok(&self, check: &T) -> bool;
 }
 
-pub trait RedisNameable {
+pub trait RedisIdentifiable {
     fn name() -> String;
+    fn next_uuid(connection: &mut Connection) -> Result<String, Box<dyn std::error::Error>> {
+        let counter: i64 = connection.incr("uuid_inc", 1)?;
+        Ok(format!("{}:{}", counter, Self::name()))
+    }
 }
 
 pub trait RedisInsertWriter {
@@ -61,7 +65,7 @@ impl Removable for RedisAdapter
 
 impl<T> Insertable<T> for RedisAdapter
 where
-    T: RedisInsertWriter + RedisNameable + Clone,
+    T: RedisInsertWriter + RedisIdentifiable + Clone,
 {
     fn insert(&mut self, data: T) -> Result<String, Box<dyn std::error::Error>> {
         let counter: i64 = self.connection.incr("uuid_inc", 1)?;
@@ -79,7 +83,7 @@ where
 
 impl<O> Gettable<O> for RedisAdapter
 where
-    O: RedisOutputReader + RedisNameable,
+    O: RedisOutputReader + RedisIdentifiable,
 {
     fn all(&mut self) -> Result<impl Iterator<Item = O>, Box<dyn std::error::Error>> {
         let mut iter: redis::Iter<String> =
@@ -104,7 +108,7 @@ where
 
 impl<O, F> Searchable<O, F> for RedisAdapter
 where
-    O: RedisOutputReader + RedisNameable,
+    O: RedisOutputReader + RedisIdentifiable,
     F: RedisFilter<O> + Default,
 {
     fn filter(&mut self, filter: F) -> Result<impl Iterator<Item = O>, Box<dyn std::error::Error>> {
@@ -128,8 +132,8 @@ where
 
 impl<T, O, F> DataAdapter<T, O, F> for RedisAdapter
 where
-    T: Clone + RedisInsertWriter + RedisNameable,
+    T: Clone + RedisInsertWriter + RedisIdentifiable,
     F: RedisFilter<O> + Default,
-    O: RedisOutputReader + RedisNameable, // TODO: The Deletable should not be in the same trait as T
+    O: RedisOutputReader + RedisIdentifiable, // TODO: The Deletable should not be in the same trait as T
 {
 }

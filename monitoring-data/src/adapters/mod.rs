@@ -1,3 +1,4 @@
+#[cfg(feature = "redis")]
 pub mod redis;
 
 
@@ -26,4 +27,6 @@ pub trait Gettable<O> {
 pub trait Removable {
     fn remove(&mut self, uuid: &str) -> Result<(), Box<dyn std::error::Error>>;
 }
+
+
 

@@ -2,21 +2,7 @@
 
 use redis::{Commands, Connection};
 
-use crate::models;
-
-use super::{RedisInsertWriter, RedisNameable, RedisOutputReader};
-
-impl RedisNameable for models::DBGameServer {
-    fn name() -> String {
-        "game_server".to_owned()
-    }
-}
-
-impl RedisNameable for models::GameServer {
-    fn name() -> String {
-        "game_server".to_owned()
-    }
-}
+use super::{RedisInsertWriter, RedisOutputReader};
 
 impl<T> RedisInsertWriter for Vec<T>
 where
@@ -53,7 +39,6 @@ where
         }
     }
 }
-
 
 macro_rules! impl_redis_writer_primitive {
     ($($type:ty),*) => {

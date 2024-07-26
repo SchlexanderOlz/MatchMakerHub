@@ -16,6 +16,12 @@ pub fn output_reader_derive(input: TokenStream) -> TokenStream {
     impl_output_reader(&ast)
 }
 
+#[proc_macro_derive(RedisIdentifiable, attributes(name, single_instance))]
+pub fn identifiable_derive(input: TokenStream) -> TokenStream {
+    let ast = syn::parse(input).unwrap();
+    impl_identifiable(&ast)
+}
+
 fn impl_insert_writer(ast: &syn::DeriveInput) -> TokenStream {
     let name = &ast.ident;
     let data = match &ast.data {
@@ -23,14 +29,12 @@ fn impl_insert_writer(ast: &syn::DeriveInput) -> TokenStream {
         _ => panic!("Only structs are supported"),
     };
 
-    
     let mut db_name = format!("{}s", name.to_string().to_lowercase());
     ast.attrs.iter().for_each(|attr| {
         if attr.path.is_ident("name") {
             db_name = attr.parse_args::<syn::LitStr>().unwrap().value();
         }
     });
-
 
     let sets: Vec<proc_macro2::TokenStream> = data.fields.iter().map(|field| {
         let field_name = field.ident.as_ref().unwrap();
@@ -99,5 +103,43 @@ fn impl_output_reader(ast: &syn::DeriveInput) -> TokenStream {
         }
     };
 
+    gen.into()
+}
+
+fn impl_identifiable(ast: &syn::DeriveInput) -> TokenStream {
+    let name = &ast.ident;
+
+    let mut db_name = format!("{}s", name.to_string().to_lowercase());
+    ast.attrs.iter().for_each(|attr| {
+        if attr.path.is_ident("name") {
+            db_name = attr.parse_args::<syn::LitStr>().unwrap().value();
+        }
+    });
+
+    let mut single_instance = false;
+    ast.attrs.iter().for_each(|attr| {
+        if attr.path.is_ident("single_instance") {
+            single_instance = attr.parse_args::<syn::LitBool>().unwrap().value();
+        }
+    });
+
+    let next_uuid = match single_instance {
+        true => quote! {
+            fn next_uuid(connection: &mut redis::Connection) -> Result<String, Box<dyn std::error::Error>> {
+                Ok(format!("-1:{}", counter, Self::name()))
+            }
+        },
+        false => quote! {},
+    };
+
+    let gen = quote! {
+        impl crate::adapters::redis::RedisIdentifiable for #name {
+            fn name() -> String {
+                #db_name.to_owned()
+            }
+
+            #next_uuid
+        }
+    };
     gen.into()
 }

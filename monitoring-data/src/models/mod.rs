@@ -1,10 +1,14 @@
-use serde::{Deserialize, Serialize};
-use redisadapter_derive::{RedisInsertWriter, RedisOutputReader};
+use redisadapter_derive::{RedisIdentifiable, RedisInsertWriter, RedisOutputReader};
 
+#[cfg(feature = "redis")]
 use crate::adapters::redis::RedisFilter;
 
-
-#[derive(Debug, Clone, RedisInsertWriter)]
+#[derive(Debug, Clone)]
+#[cfg_attr(
+    feature = "redis",
+    derive(RedisInsertWriter, RedisIdentifiable),
+    name("game_servers")
+)]
 pub struct GameServer {
     pub name: String,
     pub modes: Vec<GameMode>,
@@ -12,9 +16,14 @@ pub struct GameServer {
     pub token: String, // Token to authorize as the main-server at this game-server
 }
 
-#[derive(Debug, Clone, RedisOutputReader)]
+#[derive(Debug, Clone)]
+#[cfg_attr(
+    feature = "redis",
+    derive(RedisOutputReader, RedisIdentifiable),
+    name("game_servers")
+)]
 pub struct DBGameServer {
-    #[uuid]
+    #[cfg_attr(feature = "redis", uuid)]
     pub uuid: String,
     pub name: String,
     pub modes: Vec<GameMode>,
@@ -27,6 +36,7 @@ pub struct GameServerFilter {
     pub game: Option<String>,
 }
 
+#[cfg(feature = "redis")]
 impl RedisFilter<DBGameServer> for GameServerFilter {
     fn is_ok(&self, check: &DBGameServer) -> bool {
         if self.game.is_none() {
@@ -36,15 +46,20 @@ impl RedisFilter<DBGameServer> for GameServerFilter {
     }
 }
 
-#[derive(Debug, Clone, RedisInsertWriter, RedisOutputReader)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "redis", derive(RedisOutputReader, RedisInsertWriter))]
 pub struct GameMode {
     pub name: String,
     pub player_count: u32,
-    pub computer_lobby: bool
+    pub computer_lobby: bool,
 }
 
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
+#[cfg_attr(
+    feature = "redis",
+    derive(RedisInsertWriter, RedisIdentifiable),
+    name("searchers")
+)]
 pub struct Searcher {
     pub player_id: String,
     pub elo: u32,
@@ -53,7 +68,14 @@ pub struct Searcher {
     pub servers: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+#[cfg_attr(
+    feature = "redis",
+    derive(RedisOutputReader, RedisIdentifiable),
+    name("searchers")
+)]
 pub struct DBSearcher {
+    #[cfg_attr(feature = "redis", uuid)]
     pub uuid: String,
     pub player_id: String,
     pub elo: u32,
