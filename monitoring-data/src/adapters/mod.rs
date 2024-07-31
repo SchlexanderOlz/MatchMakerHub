@@ -2,14 +2,16 @@
 pub mod redis;
 
 
-pub trait DataAdapter<T, O, F> : Insertable<T> + Searchable<O, F> + Removable + Gettable<O>
-where T: Clone
+pub trait DataAdapter<T, O, F, U> : Insertable<T> + Searchable<O, F> + Removable + Gettable<O> + Updateable<T, U>
 {
-    // fn update<T>(&mut self, data: T) -> Result<(), Box<dyn std::error::Error>>;
+}
+
+pub trait Updateable<T, U> 
+{
+    fn update(&mut self, uuid: &str, change: U) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 pub trait Insertable<T> 
-where T: Clone
 {
     fn insert(&mut self, data: T) -> Result<String, Box<dyn std::error::Error>>; 
 }

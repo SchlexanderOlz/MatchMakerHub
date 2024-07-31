@@ -1,8 +1,10 @@
 // NOTE: The content of this file is, in best case, temporary and will be rewritten to automated proc-macros
 
-use redis::{Commands, Connection};
+use std::{time::{Duration, SystemTime}};
 
-use super::{RedisInsertWriter, RedisOutputReader};
+use redis::{Commands, Connection, Pipeline};
+
+use super::{RedisInsertWriter, RedisOutputReader, RedisUpdater};
 
 impl<T> RedisInsertWriter for Vec<T>
 where
@@ -40,6 +42,16 @@ where
     }
 }
 
+
+impl<T> RedisUpdater<T> for Vec<T>
+where
+    T: RedisInsertWriter,
+{
+    fn update(&self, pipe: &mut Pipeline, uuid: &str) -> Result<(), Box<dyn std::error::Error>> {
+        self.write(pipe, uuid)
+    }
+}
+
 macro_rules! impl_redis_writer_primitive {
     ($($type:ty),*) => {
         $(
@@ -71,3 +83,28 @@ impl_redis_writer_primitive!(
 impl_redis_reader_primitive!(
     bool, i8, i16, i32, i64, isize, u8, u16, u32, u64, f32, f64, String, usize
 );
+
+impl RedisInsertWriter for SystemTime {
+    fn write(
+        &self,
+        pipe: &mut redis::Pipeline,
+        base_key: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        pipe.set(
+            base_key,
+            self.duration_since(SystemTime::UNIX_EPOCH)?.as_secs(),
+        );
+        Ok(())
+    }
+}
+
+impl RedisOutputReader for SystemTime {
+    fn read(
+        connection: &mut Connection,
+        base_key: &str,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(
+            std::time::UNIX_EPOCH + Duration::from_secs(connection.get(base_key)?),
+        )
+    }
+}

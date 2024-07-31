@@ -2,7 +2,7 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn;
+use syn::{self, Ident};
 
 #[proc_macro_derive(RedisInsertWriter, attributes(name))]
 pub fn insert_writer_derive(input: TokenStream) -> TokenStream {
@@ -20,6 +20,12 @@ pub fn output_reader_derive(input: TokenStream) -> TokenStream {
 pub fn identifiable_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
     impl_identifiable(&ast)
+}
+
+#[proc_macro_derive(RedisUpdater, attributes(name))]
+pub fn updater_derive(input: TokenStream) -> TokenStream {
+    let ast = syn::parse(input).unwrap();
+    impl_updater(&ast)
 }
 
 fn impl_insert_writer(ast: &syn::DeriveInput) -> TokenStream {
@@ -126,7 +132,7 @@ fn impl_identifiable(ast: &syn::DeriveInput) -> TokenStream {
     let next_uuid = match single_instance {
         true => quote! {
             fn next_uuid(connection: &mut redis::Connection) -> Result<String, Box<dyn std::error::Error>> {
-                Ok(format!("-1:{}", counter, Self::name()))
+                Ok(format!("-1:{}", Self::name()))
             }
         },
         false => quote! {},
@@ -140,6 +146,67 @@ fn impl_identifiable(ast: &syn::DeriveInput) -> TokenStream {
 
             #next_uuid
         }
+    };
+    gen.into()
+}
+
+fn impl_updater(ast: &syn::DeriveInput) -> TokenStream {
+    let name = &ast.ident;
+    let data = match &ast.data {
+        syn::Data::Struct(data) => data,
+        _ => panic!("Only structs are supported"),
+    };
+
+
+
+    let sets: Vec<proc_macro2::TokenStream> = data.fields.iter().map(|field| {
+        let field_name = field.ident.as_ref().unwrap();
+        quote! {
+            if self.#field_name.is_some() {
+                self.#field_name.clone().unwrap().write(pipe, format!("{uuid}:{}", stringify!(#field_name)).as_str())?;
+            }
+        }
+
+    }).collect();
+
+    let updater_fields: Vec<proc_macro2::TokenStream> = data
+        .fields
+        .iter()
+        .map(|field| {
+            let field_name = field.ident.as_ref().unwrap();
+            let ty = &field.ty;
+            quote! {
+                pub #field_name: Option<#ty>,
+            }
+        })
+        .collect();
+
+    let mut updater_name = format!("{}Updater", name.to_string());
+    ast.attrs.iter().for_each(|attr| {
+        if attr.path.is_ident("update_struct") {
+            updater_name = attr.parse_args::<syn::LitStr>().unwrap().value();
+        }
+    });
+
+
+
+    let updater_ident = Ident::new(&updater_name, proc_macro2::Span::call_site());
+
+    let gen = quote! {
+
+            pub mod {
+                pub struct #updater_ident {
+                    #(#updater_fields)*
+                }
+            }
+
+            impl crate::adapters::redis::RedisUpdater<#name> for #updater_ident {
+                fn update(&self, pipe: &mut redis::Pipeline, uuid: &str) -> Result<(), Box<dyn std::error::Error>> {
+                    use crate::adapters::redis::RedisInsertWriter;
+                    #(#sets)*
+                    Ok(())
+                }
+            }
     };
     gen.into()
 }

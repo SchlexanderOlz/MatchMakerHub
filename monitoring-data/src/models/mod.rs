@@ -1,4 +1,7 @@
-use redisadapter_derive::{RedisIdentifiable, RedisInsertWriter, RedisOutputReader};
+pub mod generated;
+use std::time::SystemTime;
+
+use redisadapter_derive::{RedisIdentifiable, RedisInsertWriter, RedisOutputReader, RedisUpdater};
 
 #[cfg(feature = "redis")]
 use crate::adapters::redis::RedisFilter;
@@ -6,7 +9,7 @@ use crate::adapters::redis::RedisFilter;
 #[derive(Debug, Clone)]
 #[cfg_attr(
     feature = "redis",
-    derive(RedisInsertWriter, RedisIdentifiable),
+    derive(RedisInsertWriter, RedisIdentifiable, RedisUpdater),
     name("game_servers")
 )]
 pub struct GameServer {
@@ -57,16 +60,18 @@ pub struct GameMode {
 #[derive(Debug, Clone)]
 #[cfg_attr(
     feature = "redis",
-    derive(RedisInsertWriter, RedisIdentifiable),
+    derive(RedisInsertWriter, RedisIdentifiable, RedisUpdater),
     name("searchers")
 )]
 pub struct Searcher {
     pub player_id: String,
     pub elo: u32,
-    pub game: String,
-    pub mode: String,
+    pub mode: GameMode,
     pub servers: Vec<String>,
+    pub wait_start: SystemTime
 }
+
+
 
 #[derive(Debug, Clone)]
 #[cfg_attr(
@@ -97,3 +102,15 @@ pub struct Match {
     pub game: GameServer,
     pub mode: String,
 }
+
+
+#[cfg(feature = "redis")]
+#[derive(Debug, Clone, RedisInsertWriter, RedisOutputReader, RedisIdentifiable)]
+#[name("config")]
+#[single_instance(true)]
+pub struct SearcherMatchConfig {
+    pub max_elo_diff: u32,
+    pub wait_time_to_elo_factor: f32,
+    pub wait_time_to_server_factor: f32,
+}
+

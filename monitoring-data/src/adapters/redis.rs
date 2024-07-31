@@ -1,4 +1,4 @@
-use super::{DataAdapter, Gettable, Insertable, Removable, Searchable};
+use super::{DataAdapter, Gettable, Insertable, Removable, Searchable, Updateable};
 use redis::{Commands, Connection, Pipeline};
 
 mod io;
@@ -20,6 +20,10 @@ impl RedisAdapter {
 
 pub trait RedisFilter<T> {
     fn is_ok(&self, check: &T) -> bool;
+}
+
+pub trait RedisUpdater<T> {
+    fn update(&self, pipe: &mut Pipeline, uuid: &str) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 pub trait RedisIdentifiable {
@@ -136,10 +140,22 @@ where
     }
 }
 
-impl<T, O, F> DataAdapter<T, O, F> for RedisAdapter
+impl<T, U> Updateable<T, U> for RedisAdapter 
+where U: RedisUpdater<T> + Clone
+{
+    fn update(&mut self, uuid: &str, data: U) -> Result<(), Box<dyn std::error::Error>> {
+        let mut pipe = redis::pipe();
+        pipe.atomic();
+        data.clone().update(&mut pipe, uuid)?;
+        Ok(())
+    }
+}
+
+impl<T, O, F, U> DataAdapter<T, O, F, U> for RedisAdapter
 where
     T: Clone + RedisInsertWriter + RedisIdentifiable,
     F: RedisFilter<O> + Default,
-    O: RedisOutputReader + RedisIdentifiable, // TODO: The Deletable should not be in the same trait as T
+    O: RedisOutputReader + RedisIdentifiable,
+    U: RedisUpdater<T> + Clone,
 {
 }
