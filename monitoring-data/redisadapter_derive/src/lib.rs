@@ -1,30 +1,71 @@
 extern crate proc_macro;
 
+use lazy_static::lazy_static;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{self, Ident};
+use std::collections::HashMap;
+use std::sync::Mutex;
+use syn::DeriveInput;
+use syn::{self, DataStruct, Ident};
+
+struct SafeDataStruct {
+    inner: DataStruct,
+    impl_type: ImplType,
+}
+unsafe impl Sync for SafeDataStruct {}
+unsafe impl Send for SafeDataStruct {}
+
+impl SafeDataStruct {
+    pub fn new(data_struct: DataStruct, impl_type: ImplType) -> Self {
+        Self {
+            inner: data_struct,
+            impl_type,
+        }
+    }
+}
+
+impl Into<DataStruct> for SafeDataStruct {
+    fn into(self) -> DataStruct {
+        self.inner
+    }
+}
+
+enum ImplType {
+    InsertWriter,
+    OutputReader,
+    Identifiable,
+    Updater,
+}
+
+lazy_static! {
+    static ref DB_STRUCTS: Mutex<HashMap<Ident, SafeDataStruct>> = Mutex::new(HashMap::new());
+}
 
 #[proc_macro_derive(RedisInsertWriter, attributes(name))]
 pub fn insert_writer_derive(input: TokenStream) -> TokenStream {
-    let ast = syn::parse(input).unwrap();
+    let ast: DeriveInput = syn::parse(input).unwrap();
+    insert_new_struct(&ast);
     impl_insert_writer(&ast)
 }
 
 #[proc_macro_derive(RedisOutputReader, attributes(uuid))]
 pub fn output_reader_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
+    insert_new_struct(&ast);
     impl_output_reader(&ast)
 }
 
 #[proc_macro_derive(RedisIdentifiable, attributes(name, single_instance))]
 pub fn identifiable_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
+    insert_new_struct(&ast);
     impl_identifiable(&ast)
 }
 
 #[proc_macro_derive(RedisUpdater, attributes(name))]
 pub fn updater_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
+    for (key, strct) in DB_STRUCTS.lock().unwrap().iter() {}
     impl_updater(&ast)
 }
 
@@ -35,12 +76,7 @@ fn impl_insert_writer(ast: &syn::DeriveInput) -> TokenStream {
         _ => panic!("Only structs are supported"),
     };
 
-    let mut db_name = format!("{}s", name.to_string().to_lowercase());
-    ast.attrs.iter().for_each(|attr| {
-        if attr.path.is_ident("name") {
-            db_name = attr.parse_args::<syn::LitStr>().unwrap().value();
-        }
-    });
+    let db_name = get_name_attr(ast);
 
     let sets: Vec<proc_macro2::TokenStream> = data.fields.iter().map(|field| {
         let field_name = field.ident.as_ref().unwrap();
@@ -115,12 +151,7 @@ fn impl_output_reader(ast: &syn::DeriveInput) -> TokenStream {
 fn impl_identifiable(ast: &syn::DeriveInput) -> TokenStream {
     let name = &ast.ident;
 
-    let mut db_name = format!("{}s", name.to_string().to_lowercase());
-    ast.attrs.iter().for_each(|attr| {
-        if attr.path.is_ident("name") {
-            db_name = attr.parse_args::<syn::LitStr>().unwrap().value();
-        }
-    });
+    let db_name = get_name_attr(ast);
 
     let mut single_instance = false;
     ast.attrs.iter().for_each(|attr| {
@@ -157,8 +188,6 @@ fn impl_updater(ast: &syn::DeriveInput) -> TokenStream {
         _ => panic!("Only structs are supported"),
     };
 
-
-
     let sets: Vec<proc_macro2::TokenStream> = data.fields.iter().map(|field| {
         let field_name = field.ident.as_ref().unwrap();
         quote! {
@@ -166,20 +195,7 @@ fn impl_updater(ast: &syn::DeriveInput) -> TokenStream {
                 self.#field_name.clone().unwrap().write(pipe, format!("{uuid}:{}", stringify!(#field_name)).as_str())?;
             }
         }
-
     }).collect();
-
-    let updater_fields: Vec<proc_macro2::TokenStream> = data
-        .fields
-        .iter()
-        .map(|field| {
-            let field_name = field.ident.as_ref().unwrap();
-            let ty = &field.ty;
-            quote! {
-                pub #field_name: Option<#ty>,
-            }
-        })
-        .collect();
 
     let mut updater_name = format!("{}Updater", name.to_string());
     ast.attrs.iter().for_each(|attr| {
@@ -188,18 +204,9 @@ fn impl_updater(ast: &syn::DeriveInput) -> TokenStream {
         }
     });
 
-
-
     let updater_ident = Ident::new(&updater_name, proc_macro2::Span::call_site());
 
     let gen = quote! {
-
-            pub mod {
-                pub struct #updater_ident {
-                    #(#updater_fields)*
-                }
-            }
-
             impl crate::adapters::redis::RedisUpdater<#name> for #updater_ident {
                 fn update(&self, pipe: &mut redis::Pipeline, uuid: &str) -> Result<(), Box<dyn std::error::Error>> {
                     use crate::adapters::redis::RedisInsertWriter;
@@ -209,4 +216,30 @@ fn impl_updater(ast: &syn::DeriveInput) -> TokenStream {
             }
     };
     gen.into()
+}
+
+fn get_name_attr(ast: &syn::DeriveInput) -> String {
+    for attr in ast.attrs.iter() {
+        if attr.path.is_ident("name") {
+            return attr.parse_args::<syn::LitStr>().unwrap().value();
+        }
+    }
+    let name = &ast.ident;
+    format!("{}s", name.to_string().to_lowercase())
+}
+
+fn insert_new_struct(ast: &syn::DeriveInput) {
+    let mut db_structs = DB_STRUCTS.lock().unwrap();
+    if db_structs.get(&ast.ident).is_none() {
+        let safe_struct = SafeDataStruct::new(
+            match ast.data {
+                syn::Data::Struct(ref data) => data.clone(),
+                _ => panic!("Only structs are supported"),
+            },
+            ImplType::InsertWriter,
+        );
+        db_structs.insert(ast.ident.clone(), safe_struct);
+    } else {
+        panic!("Duplicate definition of struct: {}", ast.ident.to_string());
+    }
 }

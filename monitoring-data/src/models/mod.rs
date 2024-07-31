@@ -9,7 +9,7 @@ use crate::adapters::redis::RedisFilter;
 #[derive(Debug, Clone)]
 #[cfg_attr(
     feature = "redis",
-    derive(RedisInsertWriter, RedisIdentifiable, RedisUpdater),
+    derive(RedisInsertWriter, RedisIdentifiable),
     name("game_servers")
 )]
 pub struct GameServer {
@@ -17,6 +17,19 @@ pub struct GameServer {
     pub modes: Vec<GameMode>,
     pub server: String,
     pub token: String, // Token to authorize as the main-server at this game-server
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(
+    feature = "redis",
+    derive(RedisUpdater),
+    name("game_servers")
+)]
+pub struct GameServerUpdate {
+    pub name: Option<String>,
+    pub modes: Option<Vec<GameMode>>,
+    pub server: Option<String>,
+    pub token: Option<String>,
 }
 
 #[derive(Debug, Clone)]
