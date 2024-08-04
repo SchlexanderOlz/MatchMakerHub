@@ -6,8 +6,8 @@ mod tests {
     use std::error::Error;
 
     use crate::{
-        adapters::{Gettable, Insertable, Removable},
-        models::{DBGameServer, GameMode, generated::GameServerUpdater},
+        adapters::{Gettable, Insertable, Removable, Updateable},
+        models::{DBGameServer, GameMode, GameServerUpdater},
     };
 
     #[test]
@@ -92,13 +92,12 @@ mod tests {
     #[test]
     #[cfg(feature = "redis")]
     fn test_redis_adapter_update_game_server() {
-
         use crate::adapters::redis::RedisAdapter;
         use crate::models::{GameMode, GameServer};
 
         let mut adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
 
-        let mut game_server = GameServer {
+        let game_server = GameServer {
             name: "Test Server".to_owned(),
             modes: vec![GameMode {
                 name: "Test Mode".to_owned(),
@@ -110,7 +109,12 @@ mod tests {
         };
         let uuid = adapter.insert(game_server.clone()).unwrap();
 
-        let update = GameServerUpdater::default();
-        game_server.name = "CSS Battle (Cum Sum Sus Battle)".to_owned();
+        let mut update = GameServerUpdater::default();
+        update.name = Some("CSS Battle (Cum Sum Sus Battle)".to_owned());
+        adapter.update(&uuid, update).unwrap();
+
+        let result: DBGameServer = adapter.get(&uuid).unwrap();
+
+        assert!(result.name == "CSS Battle (Cum Sum Sus Battle)");
     }
 }

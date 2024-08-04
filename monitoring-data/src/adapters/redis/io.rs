@@ -1,6 +1,4 @@
-// NOTE: The content of this file is, in best case, temporary and will be rewritten to automated proc-macros
-
-use std::{time::{Duration, SystemTime}};
+use std::time::{Duration, SystemTime};
 
 use redis::{Commands, Connection, Pipeline};
 
@@ -41,7 +39,6 @@ where
         }
     }
 }
-
 
 impl<T> RedisUpdater<T> for Vec<T>
 where
@@ -103,8 +100,6 @@ impl RedisOutputReader for SystemTime {
         connection: &mut Connection,
         base_key: &str,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(
-            std::time::UNIX_EPOCH + Duration::from_secs(connection.get(base_key)?),
-        )
+        Ok(std::time::UNIX_EPOCH + Duration::from_secs(connection.get(base_key)?))
     }
 }

@@ -22,19 +22,6 @@ pub struct GameServer {
 #[derive(Debug, Clone)]
 #[cfg_attr(
     feature = "redis",
-    derive(RedisUpdater),
-    name("game_servers")
-)]
-pub struct GameServerUpdate {
-    pub name: Option<String>,
-    pub modes: Option<Vec<GameMode>>,
-    pub server: Option<String>,
-    pub token: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-#[cfg_attr(
-    feature = "redis",
     derive(RedisOutputReader, RedisIdentifiable),
     name("game_servers")
 )]
@@ -45,6 +32,15 @@ pub struct DBGameServer {
     pub modes: Vec<GameMode>,
     pub server: String,
     pub token: String,
+}
+
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "redis", derive(RedisUpdater), name("game_servers"))]
+pub struct GameServerUpdater {
+    pub name: Option<String>,
+    pub modes: Option<Vec<GameMode>>,
+    pub server: Option<String>,
+    pub token: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -73,7 +69,7 @@ pub struct GameMode {
 #[derive(Debug, Clone)]
 #[cfg_attr(
     feature = "redis",
-    derive(RedisInsertWriter, RedisIdentifiable, RedisUpdater),
+    derive(RedisInsertWriter, RedisIdentifiable),
     name("searchers")
 )]
 pub struct Searcher {
@@ -81,10 +77,18 @@ pub struct Searcher {
     pub elo: u32,
     pub mode: GameMode,
     pub servers: Vec<String>,
-    pub wait_start: SystemTime
+    pub wait_start: SystemTime,
 }
 
-
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "redis", derive(RedisUpdater), name("searchers"))]
+pub struct SearcherUpdate {
+    pub player_id: Option<String>,
+    pub elo: Option<u32>,
+    pub mode: Option<GameMode>,
+    pub servers: Option<Vec<String>>,
+    pub wait_start: Option<SystemTime>,
+}
 
 #[derive(Debug, Clone)]
 #[cfg_attr(
@@ -116,7 +120,6 @@ pub struct Match {
     pub mode: String,
 }
 
-
 #[cfg(feature = "redis")]
 #[derive(Debug, Clone, RedisInsertWriter, RedisOutputReader, RedisIdentifiable)]
 #[name("config")]
@@ -126,4 +129,3 @@ pub struct SearcherMatchConfig {
     pub wait_time_to_elo_factor: f32,
     pub wait_time_to_server_factor: f32,
 }
-

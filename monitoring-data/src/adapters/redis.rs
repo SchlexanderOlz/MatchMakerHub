@@ -140,13 +140,15 @@ where
     }
 }
 
-impl<T, U> Updateable<T, U> for RedisAdapter 
-where U: RedisUpdater<T> + Clone
+impl<T, U> Updateable<T, U> for RedisAdapter
+where
+    U: RedisUpdater<T> + Clone,
 {
     fn update(&mut self, uuid: &str, data: U) -> Result<(), Box<dyn std::error::Error>> {
         let mut pipe = redis::pipe();
         pipe.atomic();
         data.clone().update(&mut pipe, uuid)?;
+        pipe.query(&mut self.connection)?;
         Ok(())
     }
 }

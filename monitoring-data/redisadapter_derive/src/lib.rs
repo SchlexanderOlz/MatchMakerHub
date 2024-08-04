@@ -3,23 +3,14 @@ extern crate proc_macro;
 use lazy_static::lazy_static;
 use proc_macro::TokenStream;
 use quote::quote;
-use std::collections::HashMap;
 use std::sync::Mutex;
 use syn::DeriveInput;
-use syn::{self, DataStruct, Ident};
+use syn::{self, Ident};
 
 struct SafeDataStruct {
-    inner: DeriveInput,
+    type_name: String,
     impl_type: ImplType,
     db_name: String,
-}
-unsafe impl Sync for SafeDataStruct {}
-unsafe impl Send for SafeDataStruct {}
-
-impl Into<DeriveInput> for SafeDataStruct {
-    fn into(self) -> DeriveInput {
-        self.inner
-    }
 }
 
 #[derive(PartialEq)]
@@ -58,9 +49,10 @@ pub fn identifiable_derive(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(RedisUpdater, attributes(name))]
 pub fn updater_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
+
+    insert_new_struct(&ast, ImplType::Updater);
     for strct in DB_STRUCTS.lock().unwrap().iter() {
         if strct.impl_type == ImplType::InsertWriter && strct.db_name == get_name_attr(&ast) {
-            insert_new_struct(&ast, ImplType::Updater);
             return impl_updater(&ast, &strct);
         }
     }
@@ -73,8 +65,6 @@ fn impl_insert_writer(ast: &syn::DeriveInput) -> TokenStream {
         syn::Data::Struct(data) => data,
         _ => panic!("Only structs are supported"),
     };
-
-    let db_name = get_name_attr(ast);
 
     let sets: Vec<proc_macro2::TokenStream> = data.fields.iter().map(|field| {
         let field_name = field.ident.as_ref().unwrap();
@@ -195,6 +185,17 @@ fn impl_updater(ast: &syn::DeriveInput, parent: &SafeDataStruct) -> TokenStream 
         }
     }).collect();
 
+    let option_conversion: Vec<proc_macro2::TokenStream> = data
+        .fields
+        .iter()
+        .map(|field| {
+            let field_name = field.ident.as_ref().unwrap();
+            quote! {
+                #field_name: Some(parent.#field_name.clone()),
+            }
+        })
+        .collect();
+
     let mut updater_name = format!("{}Updater", name.to_string());
     ast.attrs.iter().for_each(|attr| {
         if attr.path.is_ident("update_struct") {
@@ -202,13 +203,21 @@ fn impl_updater(ast: &syn::DeriveInput, parent: &SafeDataStruct) -> TokenStream 
         }
     });
 
-    let parent_ident = &parent.inner.ident;
+    let parent_ident = Ident::new(&parent.type_name, name.span());
     let gen = quote! {
             impl crate::adapters::redis::RedisUpdater<#parent_ident> for #name {
                 fn update(&self, pipe: &mut redis::Pipeline, uuid: &str) -> Result<(), Box<dyn std::error::Error>> {
                     use crate::adapters::redis::RedisInsertWriter;
                     #(#sets)*
                     Ok(())
+                }
+            }
+
+            impl From<#parent_ident> for #name {
+                fn from(parent: #parent_ident) -> Self {
+                    Self {
+                        #(#option_conversion)*
+                    }
                 }
             }
     };
@@ -230,9 +239,9 @@ fn insert_new_struct(ast: &syn::DeriveInput, impl_type: ImplType) {
     let db_name = get_name_attr(ast);
 
     let safe_struct = SafeDataStruct {
-        inner: ast.clone(),
+        type_name: ast.ident.to_string(),
         impl_type,
-        db_name
+        db_name,
     };
     db_structs.push(safe_struct);
 }
