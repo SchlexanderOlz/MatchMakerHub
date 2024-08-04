@@ -9,27 +9,20 @@ use syn::DeriveInput;
 use syn::{self, DataStruct, Ident};
 
 struct SafeDataStruct {
-    inner: DataStruct,
+    inner: DeriveInput,
     impl_type: ImplType,
+    db_name: String,
 }
 unsafe impl Sync for SafeDataStruct {}
 unsafe impl Send for SafeDataStruct {}
 
-impl SafeDataStruct {
-    pub fn new(data_struct: DataStruct, impl_type: ImplType) -> Self {
-        Self {
-            inner: data_struct,
-            impl_type,
-        }
-    }
-}
-
-impl Into<DataStruct> for SafeDataStruct {
-    fn into(self) -> DataStruct {
+impl Into<DeriveInput> for SafeDataStruct {
+    fn into(self) -> DeriveInput {
         self.inner
     }
 }
 
+#[derive(PartialEq)]
 enum ImplType {
     InsertWriter,
     OutputReader,
@@ -38,35 +31,40 @@ enum ImplType {
 }
 
 lazy_static! {
-    static ref DB_STRUCTS: Mutex<HashMap<Ident, SafeDataStruct>> = Mutex::new(HashMap::new());
+    static ref DB_STRUCTS: Mutex<Vec<SafeDataStruct>> = Mutex::new(Vec::new());
 }
 
 #[proc_macro_derive(RedisInsertWriter, attributes(name))]
 pub fn insert_writer_derive(input: TokenStream) -> TokenStream {
     let ast: DeriveInput = syn::parse(input).unwrap();
-    insert_new_struct(&ast);
+    insert_new_struct(&ast, ImplType::InsertWriter);
     impl_insert_writer(&ast)
 }
 
 #[proc_macro_derive(RedisOutputReader, attributes(uuid))]
 pub fn output_reader_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
-    insert_new_struct(&ast);
+    insert_new_struct(&ast, ImplType::OutputReader);
     impl_output_reader(&ast)
 }
 
 #[proc_macro_derive(RedisIdentifiable, attributes(name, single_instance))]
 pub fn identifiable_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
-    insert_new_struct(&ast);
+    insert_new_struct(&ast, ImplType::Identifiable);
     impl_identifiable(&ast)
 }
 
 #[proc_macro_derive(RedisUpdater, attributes(name))]
 pub fn updater_derive(input: TokenStream) -> TokenStream {
     let ast = syn::parse(input).unwrap();
-    for (key, strct) in DB_STRUCTS.lock().unwrap().iter() {}
-    impl_updater(&ast)
+    for strct in DB_STRUCTS.lock().unwrap().iter() {
+        if strct.impl_type == ImplType::InsertWriter && strct.db_name == get_name_attr(&ast) {
+            insert_new_struct(&ast, ImplType::Updater);
+            return impl_updater(&ast, &strct);
+        }
+    }
+    panic!("No parent struct found for updater. Please make sure the parent struct has been defined before the updater.");
 }
 
 fn impl_insert_writer(ast: &syn::DeriveInput) -> TokenStream {
@@ -181,7 +179,7 @@ fn impl_identifiable(ast: &syn::DeriveInput) -> TokenStream {
     gen.into()
 }
 
-fn impl_updater(ast: &syn::DeriveInput) -> TokenStream {
+fn impl_updater(ast: &syn::DeriveInput, parent: &SafeDataStruct) -> TokenStream {
     let name = &ast.ident;
     let data = match &ast.data {
         syn::Data::Struct(data) => data,
@@ -204,10 +202,9 @@ fn impl_updater(ast: &syn::DeriveInput) -> TokenStream {
         }
     });
 
-    let updater_ident = Ident::new(&updater_name, proc_macro2::Span::call_site());
-
+    let parent_ident = &parent.inner.ident;
     let gen = quote! {
-            impl crate::adapters::redis::RedisUpdater<#name> for #updater_ident {
+            impl crate::adapters::redis::RedisUpdater<#parent_ident> for #name {
                 fn update(&self, pipe: &mut redis::Pipeline, uuid: &str) -> Result<(), Box<dyn std::error::Error>> {
                     use crate::adapters::redis::RedisInsertWriter;
                     #(#sets)*
@@ -228,18 +225,14 @@ fn get_name_attr(ast: &syn::DeriveInput) -> String {
     format!("{}s", name.to_string().to_lowercase())
 }
 
-fn insert_new_struct(ast: &syn::DeriveInput) {
+fn insert_new_struct(ast: &syn::DeriveInput, impl_type: ImplType) {
     let mut db_structs = DB_STRUCTS.lock().unwrap();
-    if db_structs.get(&ast.ident).is_none() {
-        let safe_struct = SafeDataStruct::new(
-            match ast.data {
-                syn::Data::Struct(ref data) => data.clone(),
-                _ => panic!("Only structs are supported"),
-            },
-            ImplType::InsertWriter,
-        );
-        db_structs.insert(ast.ident.clone(), safe_struct);
-    } else {
-        panic!("Duplicate definition of struct: {}", ast.ident.to_string());
-    }
+    let db_name = get_name_attr(ast);
+
+    let safe_struct = SafeDataStruct {
+        inner: ast.clone(),
+        impl_type,
+        db_name
+    };
+    db_structs.push(safe_struct);
 }
