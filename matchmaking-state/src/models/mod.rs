@@ -1,4 +1,3 @@
-pub mod generated;
 use std::time::SystemTime;
 
 use redisadapter_derive::{RedisIdentifiable, RedisInsertWriter, RedisOutputReader, RedisUpdater};
@@ -6,7 +5,7 @@ use redisadapter_derive::{RedisIdentifiable, RedisInsertWriter, RedisOutputReade
 #[cfg(feature = "redis")]
 use crate::adapters::redis::RedisFilter;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(
     feature = "redis",
     derive(RedisInsertWriter, RedisIdentifiable),
@@ -58,7 +57,7 @@ impl RedisFilter<DBGameServer> for GameServerFilter {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "redis", derive(RedisOutputReader, RedisInsertWriter))]
 pub struct GameMode {
     pub name: String,
@@ -76,6 +75,7 @@ pub struct Searcher {
     pub player_id: String,
     pub elo: u32,
     pub mode: GameMode,
+    pub game: String,
     pub servers: Vec<String>,
     pub wait_start: SystemTime,
 }
@@ -86,6 +86,7 @@ pub struct SearcherUpdate {
     pub player_id: Option<String>,
     pub elo: Option<u32>,
     pub mode: Option<GameMode>,
+    pub game: Option<String>,
     pub servers: Option<Vec<String>>,
     pub wait_start: Option<SystemTime>,
 }
@@ -101,9 +102,10 @@ pub struct DBSearcher {
     pub uuid: String,
     pub player_id: String,
     pub elo: u32,
+    pub mode: GameMode,
     pub game: String,
-    pub mode: String,
     pub servers: Vec<String>,
+    pub wait_start: SystemTime,
 }
 
 #[derive(Debug, Default)]
@@ -113,11 +115,53 @@ pub struct SearcherFilter {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(
+    feature = "redis",
+    derive(RedisInsertWriter, RedisIdentifiable),
+    name("matches")
+)]
+pub struct ProposedMatch {
+    pub match_uuid: String,
+    pub server: String,
+    pub invited: Vec<String>,
+    pub accepted: Vec<String>,
+    pub rejected: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(
+    feature = "redis",
+    derive(RedisUpdater, RedisIdentifiable),
+    name("matches")
+)]
+pub struct ProposedMatchUpdate {
+    pub match_uuid: Option<String>,
+    pub server: Option<String>,
+    pub invited: Option<Vec<String>>,
+    pub accepted: Option<Vec<String>>,
+    pub rejected: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(
+    feature = "redis",
+    derive(RedisOutputReader, RedisIdentifiable),
+    name("matches")
+)]
+pub struct DBProposedMatch {
+    #[uuid]
+    pub uuid: String,
+    pub match_uuid: String,
+    pub server: String,
+    pub invited: Vec<String>,
+    pub accepted: Vec<String>,
+    pub rejected: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Match {
-    // TODO: Come back to this and review
+    pub address: String,
     pub players: Vec<String>,
-    pub game: GameServer,
-    pub mode: String,
 }
 
 #[cfg(feature = "redis")]

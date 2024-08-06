@@ -1,5 +1,5 @@
 [package]
-name = "monitoring-data"
+name = "matchmaking-state"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,7 +8,8 @@ edition = "2021"
 [dependencies]
 redis = { version = "0.25.4" }
 tracing = "0.1.40"
-redisadapter_derive = {path = "./redisadapter_derive" }
+redisadapter-derive = {path = "./redisadapter-derive" }
+tokio = { version = "1.39.2", features = ["rt"] }
 
 [features]
 default = ["redis"]

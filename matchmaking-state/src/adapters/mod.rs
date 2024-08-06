@@ -1,8 +1,10 @@
+use crate::models::Match;
+
 #[cfg(feature = "redis")]
 pub mod redis;
 
 pub trait DataAdapter<T, O, F, U>:
-    Insertable<T> + Searchable<O, F> + Removable + Gettable<O> + Updateable<T, U>
+    Insertable<T> + Searchable<O, F> + Removable + Gettable<O> + Updateable<T, U> + Matcher
 {
 }
 
@@ -25,4 +27,16 @@ pub trait Gettable<O> {
 
 pub trait Removable {
     fn remove(&mut self, uuid: &str) -> Result<(), Box<dyn std::error::Error>>;
+}
+
+#[derive(PartialEq)]
+pub enum MatchAck {
+    Accept(Vec<String>),
+    Decline(Vec<String>)
+}
+
+pub trait MatchHandler: Send + Sync + 'static + Fn(Match) -> MatchAck {}
+
+pub trait Matcher {
+    fn on_match(&mut self, handler: impl MatchHandler);
 }

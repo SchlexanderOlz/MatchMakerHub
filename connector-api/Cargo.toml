@@ -1,5 +1,5 @@
 [package]
-name = "matchmaker-api"
+name = "connector-api"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,7 +11,8 @@ socketioxide = "0.14.0"
 tokio = { version = "1.38.1", features = ["rt", "macros", "rt-multi-thread"] }
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
+matchmaking-state = { path = "../matchmaking-state", features = ["redis"] }
 
 [dev-dependencies]
-rust_socketio = "^0.4.1"
+rust_socketio = { version = "^0.4.1", features = ["async"] }
 
