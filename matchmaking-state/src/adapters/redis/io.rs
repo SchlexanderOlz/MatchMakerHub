@@ -1,8 +1,11 @@
 use std::time::{Duration, SystemTime};
 
-use redis::{Commands, Connection, Pipeline};
+use redis::{Commands, Connection, FromRedisValue, Pipeline};
 
-use super::{RedisInsertWriter, RedisOutputReader, RedisUpdater};
+use super::{
+    NotifyOnRedisEvent, RedisIdentifiable, RedisInsertWriter, RedisOutputReader, RedisUpdater,
+    EVENT_PREFIX,
+};
 
 impl<T> RedisInsertWriter for Vec<T>
 where
@@ -46,6 +49,63 @@ where
 {
     fn update(&self, pipe: &mut Pipeline, uuid: &str) -> Result<(), Box<dyn std::error::Error>> {
         self.write(pipe, uuid)
+    }
+}
+
+fn loop_on_redis_event<T>(
+    mut connection: redis::PubSub<'static>,
+    mut handler: impl FnMut(T) -> () + Send + Sync + 'static,
+) -> tokio::task::JoinHandle<()>
+where
+    T: FromRedisValue,
+{
+    tokio::task::spawn(async move {
+        loop {
+            let msg = connection.get_message().unwrap();
+            let payload = msg.get_payload::<T>().unwrap();
+            handler(payload);
+        }
+    })
+}
+
+impl<T> NotifyOnRedisEvent for T
+where
+    T: RedisIdentifiable,
+{
+    fn on_update<O>(
+        mut connection: redis::PubSub<'static>,
+        handler: impl FnMut(O) -> () + Send + Sync + 'static,
+    ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
+    where
+        O: FromRedisValue,
+    {
+        let _ = connection.subscribe(format!("{}:update:*:{}:*", EVENT_PREFIX, T::name()))?;
+
+        Ok(loop_on_redis_event(connection, handler))
+    }
+
+    fn on_delete<O>(
+        mut connection: redis::PubSub<'static>,
+        handler: impl FnMut(O) -> () + Send + Sync + 'static,
+    ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
+    where
+        O: FromRedisValue,
+    {
+        let _ = connection.subscribe(format!("{}:delete:*:{}:*", EVENT_PREFIX, T::name()))?;
+
+        Ok(loop_on_redis_event(connection, handler))
+    }
+
+    fn on_insert<O>(
+        mut connection: redis::PubSub<'static>,
+        handler: impl FnMut(O) -> () + Send + Sync + 'static,
+    ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
+    where
+        O: FromRedisValue,
+    {
+        let _ = connection.subscribe(format!("{}:create:*:{}:*", EVENT_PREFIX, T::name()))?;
+
+        Ok(loop_on_redis_event(connection, handler))
     }
 }
 

@@ -1,26 +1,28 @@
 use std::{
-    collections::{HashMap, HashSet}, fmt::format, sync::{Arc, Mutex}
+    collections::HashMap,
+    sync::{Arc, Mutex},
 };
 
-use crate::models::{DBProposedMatch, DBSearcher, Match, ProposedMatch, ProposedMatchUpdate};
+use crate::models::Match;
 
 use super::{
-    DataAdapter, Gettable, Insertable, MatchAck, MatchHandler, Matcher, Removable, Searchable, Updateable
+    DataAdapter, Gettable, Insertable, MatchHandler, Matcher, Removable, Searchable, Updateable,
 };
-use redis::{Commands, Connection, Pipeline};
+use redis::{Commands, Connection, FromRedisValue, Msg, Pipeline, PubSub};
 
 mod io;
 
+const EVENT_PREFIX: &str = "events";
 
 pub struct RedisAdapter {
     client: redis::Client,
-    connection: redis::Connection,
+    connection: Arc<Mutex<redis::Connection>>,
     handlers: Arc<Mutex<Vec<Arc<dyn MatchHandler>>>>,
 }
 
 impl From<redis::Client> for RedisAdapter {
     fn from(client: redis::Client) -> Self {
-        let connection = client.get_connection().unwrap();
+        let connection = Arc::new(Mutex::new(client.get_connection().unwrap()));
         Self {
             client,
             connection,
@@ -33,7 +35,7 @@ impl Clone for RedisAdapter {
     fn clone(&self) -> Self {
         let client = self.client.clone();
         Self {
-            connection: client.get_connection().unwrap(),
+            connection: Arc::new(Mutex::new(client.get_connection().unwrap())),
             client,
             handlers: self.handlers.clone(),
         }
@@ -41,63 +43,92 @@ impl Clone for RedisAdapter {
 }
 
 impl RedisAdapter {
+    /// Connects to a redis server using the given url.
+
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - The url to connect to the redis server.
+    ///     - *format*: `redis://[<username>][:<password>@]<hostname>[:port][/<db>]`
+    ///     - *example*: `redis://john:password@127.0.0.1:6379/0`
+    ///
+    /// # Returns
+    ///
+    /// A `Result` with the any connection error. If Ok a new `RedisAdapter` object is returned.
     pub fn connect(url: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let client = redis::Client::open(url)?;
         Ok(Self::from(client))
     }
 
-    pub fn run_match_check(&self) -> tokio::task::JoinHandle<()> {
+    /// Starts the match check in a new task. Creates a new seperate connection to the redis server.
+    ///
+    /// # Returns
+    ///
+    /// A `tokio::task::JoinHandle` that represents the spawned task.
+    pub async fn start_match_check(&self) -> tokio::task::JoinHandle<()> {
         let self_clone = self.clone();
         tokio::task::spawn(async move {
-            self_clone.start_match_check().unwrap();
+            self_clone.match_check().unwrap();
         })
     }
 
-    fn start_match_check(
-        mut self,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    /// Starts the match check in the current thread. Creates a new seperate connection to the redis server using it as a pubsub connection for events.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` with the error if any occured. Under normal conditions this function will not exit and therefore the result should be `!`.
+    /// This is currently an experimental feature in Rust and therefore not implemented here yet.
+    pub fn match_check(self) -> Result<(), Box<dyn std::error::Error>> {
         // NOTE: Result should be '!' for Ok values. This is currently expermintal tough and therefore not implemented here.
         let mut connection = self.client.get_connection()?;
         let mut connection = connection.as_pubsub();
 
         connection.subscribe("*:match:*")?;
 
+        self.acc_searchers(connection)
+    }
+
+    fn acc_searchers(mut self, mut connection: PubSub) -> Result<(), Box<dyn std::error::Error>> {
         let mut found_servers: HashMap<String, String> = HashMap::new();
         let mut found_players: HashMap<String, Vec<String>> = HashMap::new();
 
+        // TODO: Multithread this as soon as the problem with the order of messages is fixed.
         loop {
             let msg = connection.get_message().unwrap();
+            self.handle_msg(msg, &mut found_servers, &mut found_players);
+        }
+    }
 
-            let channel_name = msg.get_channel_name();
-            let channel = channel_name.split(":").collect::<Vec<&str>>();
+    fn handle_msg(
+        &mut self,
+        msg: Msg,
+        found_servers: &mut HashMap<String, String>,
+        found_players: &mut HashMap<String, Vec<String>>,
+    ) {
+        let payload = msg.get_payload::<String>().unwrap();
 
-            let last = channel.last().unwrap();
-            let uuid = channel.first().unwrap().to_string();
+        let channel = msg.get_channel_name().split(":").collect::<Vec<&str>>();
 
-            let payload = msg.get_payload::<String>().unwrap();
-            if last.to_string() == "server".to_string() {
-                found_servers.insert(channel.first().unwrap().to_string(), payload);
-                continue;
+        let last = channel.last().unwrap();
+        let uuid = channel.first().unwrap().to_string();
+
+        if last.to_string() == "server".to_string() {
+            found_servers.insert(channel.first().unwrap().to_string(), payload);
+            return;
+        }
+
+        if last.to_string() == "done".to_string() {
+            let _ = self.on_done_msg(&uuid, payload, &found_servers, &found_players);
+            // TODO: The order of messages is likely but not guaranteed. This could be a potential error and should be handled accordingly.
+            return;
+        }
+
+        if channel.get(channel.len() - 2).unwrap().to_string() == "players".to_string() {
+            if let Some(players) = found_players.get_mut(&uuid) {
+                players.push(payload);
+                return;
             }
-
-            if last.to_string() == "done".to_string() {
-                Self::on_done_msg(
-                    &mut self,
-                    &uuid,
-                    payload,
-                    &found_servers,
-                    &found_players,
-                )?;
-                continue;
-            }
-
-            if channel.get(channel.len() - 2).unwrap().to_string() == "players".to_string() {
-                if let Some(players) = found_players.get_mut(&uuid) {
-                    players.push(payload);
-                    continue;
-                }
-                found_players.insert(channel.first().unwrap().to_string(), vec![payload]);
-            }
+            found_players.insert(channel.first().unwrap().to_string(), vec![payload]);
         }
     }
 
@@ -110,7 +141,6 @@ impl RedisAdapter {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let server = found_servers.get(uuid);
         if server.is_none() {
-            // TODO: Handle the server error accordingly
             todo!("Handle the server error accordingly");
         }
         let server = server.unwrap();
@@ -119,7 +149,7 @@ impl RedisAdapter {
         if players.is_none() {
             todo!("Handle the player error accordingly");
         }
-        let players = players.unwrap();
+        let players = players.unwrap().clone();
         if players.len() as i32 != payload.parse::<i32>()? - 1 {
             todo!("Handle the player count error accordingly");
         }
@@ -129,80 +159,32 @@ impl RedisAdapter {
             players: players.clone(),
         };
 
-        let proposed_match = ProposedMatch {
-            match_uuid: uuid.to_string(),
-            server: server.to_string(),
-            invited: players.clone(),
-            accepted: vec![],
-            rejected: vec![],
-        };
-
-        let proposed_uuid = self.insert(proposed_match)?;
-
-        let mut handles = self.handlers
+        let handles = self
+            .handlers
             .lock()
             .unwrap()
             .iter()
             .cloned()
             .collect::<Vec<_>>()
             .into_iter()
-            .map(move |fun| {
+            .map(move |mut fun| {
                 let match_clone = new_match.clone();
-                tokio::task::spawn(async move {
-                    fun(match_clone)
-                })
+                tokio::task::spawn(async move { Arc::get_mut(&mut fun).unwrap()(match_clone) })
             });
 
         let mut self_clone = self.clone();
-
         tokio::task::spawn(async move {
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
-                .build().unwrap();
-            
-            // TODO: The bellow code using the HashSet can probably be moved to the redis-db by using the Hashset type in redis
-            // TODO: Transactions are to be used here
-            handles.for_each(|handle| {
-                match runtime.block_on(handle) {
-                    Ok(MatchAck::Accept(players)) => {
-                        let proposed_state: DBProposedMatch = self_clone.get(&proposed_uuid).unwrap();
-                        let combined: HashSet<_> = HashSet::from_iter(proposed_state.accepted.into_iter().chain(players));
-                        let update = ProposedMatchUpdate {
-                            accepted: Some(combined.into_iter().collect()),
-                            ..Default::default()
-                        };
-                        self_clone.update(&proposed_uuid, update).unwrap();
-                    }
-                    Ok(MatchAck::Decline(players)) => {
-                        let proposed_state: DBProposedMatch = self_clone.get(&proposed_uuid).unwrap();
-                        let combined: HashSet<_> = HashSet::from_iter(proposed_state.rejected.into_iter().chain(players));
-                        let update = ProposedMatchUpdate {
-                            rejected: Some(combined.into_iter().collect()),
-                            ..Default::default()
-                        };
-                        self_clone.update(&proposed_uuid, update).unwrap();
-                    }
-                    Err(err) => {
-                        todo!("{:?}", err)
-                    }
+                .build()
+                .unwrap();
+
+            handles.for_each(|handle| runtime.block_on(async move { handle.await.unwrap() }));
+            players.iter().for_each(|player| {
+                if let Err(err) = self_clone.remove(player) {
+                    eprintln!("Error removing player: {}", err);
                 }
             });
-
-            let proposed_state: DBProposedMatch = self_clone.get(&proposed_uuid).unwrap();
-            if proposed_state.accepted.len() == proposed_state.invited.len() {
-                let _: i32 = self_clone.connection.publish(format!("{}:match:accepted", proposed_uuid), true).unwrap();
-            }
-
-            if proposed_state.rejected.len() + proposed_state.accepted.len() == proposed_state.invited.len() {
-                let _: i32 = self_clone.connection.publish(format!("{}:match:accepted", proposed_uuid), false).unwrap();
-            }
-
-            let mut connection = self_clone.connection.as_pubsub();
-            connection.subscribe(format!("{}:match:accepted", proposed_uuid)).unwrap();
-            loop {
-                let msg = connection.get_message().unwrap();
-                let accepted: bool = msg.get_payload().unwrap();
-            }
         });
         Ok(())
     }
@@ -228,6 +210,32 @@ pub trait RedisInsertWriter {
     fn write(&self, pipe: &mut Pipeline, base_key: &str) -> Result<(), Box<dyn std::error::Error>>;
 }
 
+/// TODO: Currently functions in this trait require the arguments to be static. This solution prohibits removing existing handlers.
+/// This should be fixed by using some Context-Manager which provides the PubSub connection and handler. When the Context-Manager is dropped the handler and handler-thread should be killed.
+/// This trait should also be moved to the super-module
+pub trait NotifyOnRedisEvent {
+    fn on_update<T>(
+        connection: PubSub<'static>,
+        handler: impl FnMut(T) -> () + Send + Sync + 'static,
+    ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
+    where
+        T: FromRedisValue;
+
+    fn on_insert<T>(
+        connection: PubSub<'static>,
+        handler: impl FnMut(T) -> () + Send + Sync + 'static,
+    ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
+    where
+        T: FromRedisValue;
+
+    fn on_delete<T>(
+        connection: PubSub<'static>,
+        handler: impl FnMut(T) -> () + Send + Sync + 'static,
+    ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
+    where
+        T: FromRedisValue;
+}
+
 pub trait RedisOutputReader
 where
     Self: Sized,
@@ -240,18 +248,20 @@ where
 
 impl Removable for RedisAdapter {
     fn remove(&mut self, uuid: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let iter = self
-            .connection
+        let mut connection = self.connection.lock().unwrap();
+        let iter = connection
             .scan_match(format!("{}*", uuid))?
             .into_iter()
             .collect::<Vec<String>>();
 
-        redis::transaction(&mut self.connection, iter.as_slice(), |conn, pipe| {
+        redis::transaction(&mut connection, iter.as_slice(), |conn, pipe| {
             iter.iter().for_each(|key| {
                 pipe.del(key).ignore();
             });
             pipe.query(conn)
         })?;
+
+        connection.publish(format!("{}:remove:{}", EVENT_PREFIX, uuid), uuid)?;
         Ok(())
     }
 }
@@ -261,13 +271,18 @@ where
     T: RedisInsertWriter + RedisIdentifiable + Clone,
 {
     fn insert(&mut self, data: T) -> Result<String, Box<dyn std::error::Error>> {
-        let key = T::next_uuid(&mut self.connection)?;
+        let key = { T::next_uuid(&mut self.connection.lock().unwrap())? };
 
         let mut pipe = redis::pipe();
         pipe.atomic();
         data.write(&mut pipe, &key)?;
         pipe.set(key.clone(), "");
-        pipe.query(&mut self.connection)?;
+
+        {
+            let mut connection = self.connection.lock().unwrap();
+            pipe.query(&mut connection)?;
+            connection.publish(format!("{}:insert:{}", EVENT_PREFIX, key), key.clone())?;
+        }
 
         let mut split = key.split(":");
         Ok(split
@@ -281,44 +296,58 @@ where
     }
 }
 
-impl<O> Gettable<O> for RedisAdapter
+impl<'a, O> Gettable<'a, O> for RedisAdapter
 where
     O: RedisOutputReader + RedisIdentifiable,
 {
-    fn all(&mut self) -> Result<impl Iterator<Item = O>, Box<dyn std::error::Error>> {
-        let mut iter: redis::Iter<String> =
-            self.connection.scan_match(format!("*:{}", O::name()))?;
-        let mut connection = self.client.get_connection()?;
+    type Type = Box<dyn Iterator<Item = O> + 'a>;
 
-        let iter = std::iter::from_fn(move || {
+    fn all(&'a self) -> Result<Self::Type, Box<dyn std::error::Error>> {
+        let mut iter = self
+            .connection
+            .lock()
+            .unwrap()
+            .scan_match(format!("*:{}", O::name()))?
+            .collect::<Vec<String>>()
+            .into_iter();
+
+        let connection_ref = self.connection.clone();
+        let iter_fun = std::iter::from_fn(move || {
             if let Some(key) = iter.next() {
-                let res = O::read(&mut connection, &key).ok()?;
+                let res = O::read(&mut connection_ref.lock().unwrap(), &key).ok()?;
                 return Some(res);
             }
             None
         });
 
-        Ok(iter)
+        Ok(Box::new(iter_fun))
     }
 
-    fn get(&mut self, uuid: &str) -> Result<O, Box<dyn std::error::Error>> {
-        O::read(&mut self.connection, uuid)
+    fn get(&self, uuid: &str) -> Result<O, Box<dyn std::error::Error>> {
+        O::read(&mut self.connection.lock().unwrap(), uuid)
     }
 }
 
-impl<O, F> Searchable<O, F> for RedisAdapter
+impl<'a, O, F> Searchable<'a, O, F> for RedisAdapter
 where
-    O: RedisOutputReader + RedisIdentifiable,
-    F: RedisFilter<O> + Default,
+    O: RedisOutputReader + RedisIdentifiable + 'a,
+    F: RedisFilter<O> + Default + 'a,
 {
-    fn filter(&mut self, filter: F) -> Result<impl Iterator<Item = O>, Box<dyn std::error::Error>> {
-        let mut iter: redis::Iter<String> =
-            self.connection.scan_match(format!("*:{}", O::name()))?;
-        let mut connection = self.client.get_connection()?;
+    type Type = Box<dyn Iterator<Item = O> + 'a>;
 
+    fn filter(&'a self, filter: F) -> Result<Self::Type, Box<dyn std::error::Error>> {
+        let mut iter = self
+            .connection
+            .lock()
+            .unwrap()
+            .scan_match(format!("*:{}", O::name()))?
+            .collect::<Vec<String>>()
+            .into_iter();
+
+        let connection_ref = self.connection.clone();
         let iter = std::iter::from_fn(move || {
             while let Some(key) = iter.next() {
-                let res = O::read(&mut connection, &key).ok()?;
+                let res = O::read(&mut connection_ref.lock().unwrap(), &key).ok()?;
                 if filter.is_ok(&res) {
                     return Some(res);
                 }
@@ -326,7 +355,7 @@ where
             None
         });
 
-        Ok(iter)
+        Ok(Box::new(iter))
     }
 }
 
@@ -338,26 +367,27 @@ where
         let mut pipe = redis::pipe();
         pipe.atomic();
         data.clone().update(&mut pipe, uuid)?;
-        pipe.query(&mut self.connection)?;
+
+        let mut connection = self.connection.lock().unwrap();
+        pipe.query(&mut connection)?;
+
+        connection.publish(format!("{}:update:{}", EVENT_PREFIX, uuid), uuid)?;
         Ok(())
     }
 }
 
-impl Matcher for RedisAdapter
-where
-    Self: Gettable<DBSearcher> + Removable,
-{
+impl Matcher for RedisAdapter {
     // NOTE: This function is a temporary inefficient implementation and will be migrated to a server-side lua script using channels
     fn on_match(&mut self, handler: impl MatchHandler) {
         self.handlers.lock().unwrap().push(Arc::new(handler));
     }
 }
 
-impl<T, O, F, U> DataAdapter<T, O, F, U> for RedisAdapter
+impl<'a, T, O, F, U> DataAdapter<'a, T, O, F, U> for RedisAdapter
 where
-    T: Clone + RedisInsertWriter + RedisIdentifiable,
-    F: RedisFilter<O> + Default,
-    O: RedisOutputReader + RedisIdentifiable,
-    U: RedisUpdater<T> + Clone,
+    T: Clone + RedisInsertWriter + RedisIdentifiable + 'a,
+    F: RedisFilter<O> + Default + 'a,
+    O: RedisOutputReader + RedisIdentifiable + 'a,
+    U: RedisUpdater<T> + Clone + 'a,
 {
 }

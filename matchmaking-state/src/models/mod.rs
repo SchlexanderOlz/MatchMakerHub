@@ -115,50 +115,6 @@ pub struct SearcherFilter {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(
-    feature = "redis",
-    derive(RedisInsertWriter, RedisIdentifiable),
-    name("matches")
-)]
-pub struct ProposedMatch {
-    pub match_uuid: String,
-    pub server: String,
-    pub invited: Vec<String>,
-    pub accepted: Vec<String>,
-    pub rejected: Vec<String>,
-}
-
-#[derive(Debug, Clone, Default)]
-#[cfg_attr(
-    feature = "redis",
-    derive(RedisUpdater, RedisIdentifiable),
-    name("matches")
-)]
-pub struct ProposedMatchUpdate {
-    pub match_uuid: Option<String>,
-    pub server: Option<String>,
-    pub invited: Option<Vec<String>>,
-    pub accepted: Option<Vec<String>>,
-    pub rejected: Option<Vec<String>>,
-}
-
-#[derive(Debug, Clone)]
-#[cfg_attr(
-    feature = "redis",
-    derive(RedisOutputReader, RedisIdentifiable),
-    name("matches")
-)]
-pub struct DBProposedMatch {
-    #[uuid]
-    pub uuid: String,
-    pub match_uuid: String,
-    pub server: String,
-    pub invited: Vec<String>,
-    pub accepted: Vec<String>,
-    pub rejected: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
 pub struct Match {
     pub address: String,
     pub players: Vec<String>,
