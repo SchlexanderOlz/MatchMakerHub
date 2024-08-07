@@ -33,6 +33,12 @@ pub struct DBGameServer {
     pub token: String,
 }
 
+impl PartialEq for DBGameServer {
+    fn eq(&self, other: &Self) -> bool {
+        self.uuid == other.uuid
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "redis", derive(RedisUpdater), name("game_servers"))]
 pub struct GameServerUpdater {

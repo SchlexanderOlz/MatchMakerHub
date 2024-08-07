@@ -3,8 +3,7 @@ use std::time::{Duration, SystemTime};
 use redis::{Commands, Connection, FromRedisValue, Pipeline};
 
 use super::{
-    NotifyOnRedisEvent, RedisIdentifiable, RedisInsertWriter, RedisOutputReader, RedisUpdater,
-    EVENT_PREFIX,
+    NotifyOnRedisEvent, RedisAdapter, RedisIdentifiable, RedisInsertWriter, RedisOutputReader, RedisUpdater, EVENT_PREFIX
 };
 
 impl<T> RedisInsertWriter for Vec<T>
@@ -53,19 +52,23 @@ where
 }
 
 fn loop_on_redis_event<T>(
-    mut connection: redis::PubSub<'static>,
+    channel: String,
+    client: redis::Client,
     mut handler: impl FnMut(T) -> () + Send + Sync + 'static,
-) -> tokio::task::JoinHandle<()>
+) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
 where
     T: FromRedisValue,
 {
-    tokio::task::spawn(async move {
+    let mut connection = client.get_connection()?;
+    Ok(tokio::task::spawn(async move {
+        let mut connection = connection.as_pubsub();
+        let _ = connection.subscribe(channel); // TODO: Handle error
         loop {
             let msg = connection.get_message().unwrap();
             let payload = msg.get_payload::<T>().unwrap();
             handler(payload);
         }
-    })
+    }))
 }
 
 impl<T> NotifyOnRedisEvent for T
@@ -73,39 +76,33 @@ where
     T: RedisIdentifiable,
 {
     fn on_update<O>(
-        mut connection: redis::PubSub<'static>,
+        connection: &RedisAdapter,
         handler: impl FnMut(O) -> () + Send + Sync + 'static,
     ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
     where
         O: FromRedisValue,
     {
-        let _ = connection.subscribe(format!("{}:update:*:{}:*", EVENT_PREFIX, T::name()))?;
-
-        Ok(loop_on_redis_event(connection, handler))
+        Ok(loop_on_redis_event(format!("{}:update:*:{}:*", EVENT_PREFIX, T::name()), connection.client.clone(), handler)?)
     }
 
     fn on_delete<O>(
-        mut connection: redis::PubSub<'static>,
+        connection: &RedisAdapter,
         handler: impl FnMut(O) -> () + Send + Sync + 'static,
     ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
     where
         O: FromRedisValue,
     {
-        let _ = connection.subscribe(format!("{}:delete:*:{}:*", EVENT_PREFIX, T::name()))?;
-
-        Ok(loop_on_redis_event(connection, handler))
+        Ok(loop_on_redis_event(format!("{}:delete:*:{}:*", EVENT_PREFIX, T::name()), connection.client.clone(), handler)?)
     }
 
     fn on_insert<O>(
-        mut connection: redis::PubSub<'static>,
+        connection: &RedisAdapter,
         handler: impl FnMut(O) -> () + Send + Sync + 'static,
     ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
     where
         O: FromRedisValue,
     {
-        let _ = connection.subscribe(format!("{}:create:*:{}:*", EVENT_PREFIX, T::name()))?;
-
-        Ok(loop_on_redis_event(connection, handler))
+        Ok(loop_on_redis_event(format!("{}:insert:*:{}:*", EVENT_PREFIX, T::name()), connection.client.clone(), handler)?)
     }
 }
 

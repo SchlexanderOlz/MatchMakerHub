@@ -1,18 +1,17 @@
 use std::{sync::{Arc, Mutex}, time::SystemTime};
 
-use axum::{body::Bytes, routing::get};
+use axum::body::Bytes;
 use models::{DirectConnect, Host, Search};
-use serde_json::{ser, Value};
+use serde_json::Value;
 use socketioxide::{
-    adapter, extract::{AckSender, Bin, Data, SocketRef}, SocketIo
+    extract::{Bin, Data, SocketRef}, SocketIo
 };
 use tracing::info;
 use tracing_subscriber::FmtSubscriber;
-use serde::{Deserialize, Serialize};
 use matchmaking_state::{adapters::{redis::RedisAdapter, Gettable, Insertable}, models::{DBGameServer, GameMode, GameServer, Searcher}};
-use matchmaking_state::adapters::DataAdapter;
 
 mod models;
+mod match_maker;
 
 
 pub struct Handler {
@@ -66,6 +65,7 @@ impl Handler {
         let searcher = Searcher {
             player_id: search.player_id.clone(),
             elo,
+            game: search.game.clone(),
             mode: GameMode {
                 name: search.mode.name.clone(),
                 player_count: search.mode.player_count,

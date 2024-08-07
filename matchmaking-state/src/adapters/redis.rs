@@ -215,21 +215,21 @@ pub trait RedisInsertWriter {
 /// This trait should also be moved to the super-module
 pub trait NotifyOnRedisEvent {
     fn on_update<T>(
-        connection: PubSub<'static>,
+        connection: &RedisAdapter,
         handler: impl FnMut(T) -> () + Send + Sync + 'static,
     ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
     where
         T: FromRedisValue;
 
     fn on_insert<T>(
-        connection: PubSub<'static>,
+        connection: &RedisAdapter,
         handler: impl FnMut(T) -> () + Send + Sync + 'static,
     ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
     where
         T: FromRedisValue;
 
     fn on_delete<T>(
-        connection: PubSub<'static>,
+        connection: &RedisAdapter,
         handler: impl FnMut(T) -> () + Send + Sync + 'static,
     ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
     where
