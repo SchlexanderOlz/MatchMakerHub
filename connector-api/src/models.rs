@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[derive(Deserialize, Default)]
@@ -30,3 +30,12 @@ pub struct Host {
 pub struct DirectConnect {
     pub write_key: String,
 }
+
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Match {
+    pub address: String,
+    pub read: String,
+    pub write: String,
+}
+

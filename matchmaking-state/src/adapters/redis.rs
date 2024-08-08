@@ -3,11 +3,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::models::Match;
+use crate::models::{DBSearcher, Match};
 
-use super::{
-    DataAdapter, Gettable, Insertable, MatchHandler, Matcher, Removable, Searchable, Updateable,
-};
+use super::{DataAdapter, Gettable, Insertable, Matcher, Removable, Searchable, Updateable};
 use redis::{Commands, Connection, FromRedisValue, Msg, Pipeline, PubSub};
 
 mod io;
@@ -17,7 +15,7 @@ const EVENT_PREFIX: &str = "events";
 pub struct RedisAdapter {
     client: redis::Client,
     connection: Arc<Mutex<redis::Connection>>,
-    handlers: Arc<Mutex<Vec<Arc<dyn MatchHandler>>>>,
+    handlers: Arc<Mutex<Vec<Arc<dyn Send + Sync + 'static + FnMut(Match) -> ()>>>>,
 }
 
 impl From<redis::Client> for RedisAdapter {
@@ -146,7 +144,7 @@ impl RedisAdapter {
         let server = server.unwrap();
 
         let players = found_players.get(uuid);
-        if players.is_none() {
+        if players.is_none() || players.unwrap().len() == 0 {
             todo!("Handle the player error accordingly");
         }
         let players = players.unwrap().clone();
@@ -154,9 +152,13 @@ impl RedisAdapter {
             todo!("Handle the player count error accordingly");
         }
 
+        let example_searcher: DBSearcher = self.get(players.get(0).unwrap())?;
+
         let new_match = Match {
             address: server.to_string(),
             players: players.clone(),
+            mode: example_searcher.mode,
+            game: example_searcher.game,
         };
 
         let handles = self
@@ -378,7 +380,10 @@ where
 
 impl Matcher for RedisAdapter {
     // NOTE: This function is a temporary inefficient implementation and will be migrated to a server-side lua script using channels
-    fn on_match(&mut self, handler: impl MatchHandler) {
+    fn on_match<T>(&mut self, handler: T)
+    where
+        T: Send + Sync + 'static + FnMut(Match) -> (),
+    {
         self.handlers.lock().unwrap().push(Arc::new(handler));
     }
 }

@@ -33,10 +33,9 @@ pub trait Removable {
     fn remove(&mut self, uuid: &str) -> Result<(), Box<dyn std::error::Error>>;
 }
 
-pub trait MatchHandler: Send + Sync + 'static + FnMut(Match) -> () {}
-
 pub trait Matcher {
-    fn on_match(&mut self, handler: impl MatchHandler);
+    fn on_match<T>(&mut self, handler: T)
+    where T: Send + Sync + 'static + FnMut(Match) -> ();
 }
 
 

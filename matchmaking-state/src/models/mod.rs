@@ -123,8 +123,13 @@ pub struct SearcherFilter {
 #[derive(Debug, Clone)]
 pub struct Match {
     pub address: String,
+    pub game: String,
     pub players: Vec<String>,
+    pub mode: GameMode
 }
+
+unsafe impl Send for Match {}
+unsafe impl Sync for Match {}
 
 #[cfg(feature = "redis")]
 #[derive(Debug, Clone, RedisInsertWriter, RedisOutputReader, RedisIdentifiable)]

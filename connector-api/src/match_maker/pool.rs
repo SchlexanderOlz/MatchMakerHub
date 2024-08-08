@@ -1,10 +1,10 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use matchmaking_state::{adapters::{redis::{NotifyOnRedisEvent, RedisAdapter}, Gettable}, models::{DBGameServer, GameServer, GameServerFilter, GameServerUpdater}};
 
 pub struct GameServerPool {
     pub servers: Arc<Mutex<Vec<DBGameServer>>>,
-    connection: RedisAdapter 
+    connection: Arc<Mutex<RedisAdapter>>
 }
 
 impl Into<Vec<DBGameServer>> for GameServerPool {
@@ -14,7 +14,7 @@ impl Into<Vec<DBGameServer>> for GameServerPool {
 }
 
 impl GameServerPool {
-    pub fn new(adapter: RedisAdapter) -> Self {
+    pub fn new(adapter: Arc<Mutex<RedisAdapter>>) -> Self {
         Self {
             servers: Arc::new(Mutex::new(Vec::new())),
             connection: adapter
@@ -23,7 +23,7 @@ impl GameServerPool {
 
 
     pub fn populate(&mut self) {
-        let servers = self.connection.all().unwrap().collect::<Vec<DBGameServer>>(); 
+        let servers = self.connection.lock().unwrap().all().unwrap().collect::<Vec<DBGameServer>>(); 
         *self.servers.lock().unwrap() = servers;
     }
 
