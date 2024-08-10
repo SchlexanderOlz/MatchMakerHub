@@ -32,7 +32,7 @@ impl Handler {
         self.search_id.lock().unwrap().clone()
     }
 
-    pub fn handle_search(&self, socket: &SocketRef, data: Search, _: Vec<Bytes>) {
+    pub fn handle_search(&self, socket: &SocketRef, data: Search, bin: Vec<Bytes>) {
         // TODO: First verify if the user with this id, actually exists and has the correct token etc.
         let servers: Vec<String> = self
             .state
@@ -53,7 +53,7 @@ impl Handler {
         // TODO: Throw some error and return it to the client if the selected game_mode is not valid. Ask the game-servers for validity. Rethink the saving the GameModes in the DB approach
 
         *self.search.lock().unwrap() = Some(data);
-        socket.emit("servers", servers).ok();
+        socket.bin(bin).emit("servers", servers).ok();
     }
 
     pub fn handle_host(&self, socket: &SocketRef, data: Host, bin: Vec<Bytes>) {}

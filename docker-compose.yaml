@@ -15,6 +15,7 @@ services:
       - "./matchmaking-state:/usr/matchmaking-state"
     environment:
       - HOST_URL=0.0.0.0:4000
+      - REDIS_URL=redis://monitoring_db:6379
 
   monitoring_db:
     image: redis:latest
@@ -23,8 +24,6 @@ services:
       - "6379:6379"
     volumes:
       - monitoring_data:/data
-    networks:
-      - redis_network
 
 volumes:
   monitoring_data:

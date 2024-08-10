@@ -20,7 +20,7 @@ pub struct RedisAdapter {
 
 impl From<redis::Client> for RedisAdapter {
     fn from(client: redis::Client) -> Self {
-        let connection = Arc::new(Mutex::new(client.get_connection().unwrap()));
+        let connection = Arc::new(Mutex::new(client.get_connection().expect(format!("Could not connect to redis server at {:?}", client).as_str())));
         Self {
             client,
             connection,
