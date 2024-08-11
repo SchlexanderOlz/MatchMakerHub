@@ -10,12 +10,27 @@ services:
     ports:
     - "4000:4000"
     restart: on-failure
+    depends_on:
+      - monitoring_db
     volumes:
       - "./connector-api:/usr/connector-api"
       - "./matchmaking-state:/usr/matchmaking-state"
     environment:
       - HOST_URL=0.0.0.0:4000
       - REDIS_URL=redis://monitoring_db:6379
+
+  automate:
+    build:
+      context: ./automate
+    image: python:3.11-slim 
+    container_name: automate
+    command: "python auto.py"
+    restart: on-failure
+    depends_on:
+      - monitoring_db
+    volumes:
+      - "./automate:/usr/automate"
+      - "./matchmaking-state/scripts:/usr/matchmaking-state/scripts"
 
   monitoring_db:
     image: redis:latest
@@ -24,6 +39,7 @@ services:
       - "6379:6379"
     volumes:
       - monitoring_data:/data
+  
 
 volumes:
   monitoring_data:
