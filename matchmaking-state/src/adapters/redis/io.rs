@@ -62,7 +62,7 @@ where
     let mut connection = client.get_connection()?;
     Ok(tokio::task::spawn(async move {
         let mut connection = connection.as_pubsub();
-        let _ = connection.subscribe(channel); // TODO: Handle error
+        let _ = connection.psubscribe(channel); // TODO: Handle error
         loop {
             let msg = connection.get_message().unwrap();
             let payload = msg.get_payload::<T>().unwrap();

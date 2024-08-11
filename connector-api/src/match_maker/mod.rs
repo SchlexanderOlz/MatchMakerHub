@@ -10,6 +10,7 @@ use matchmaking_state::{
 };
 use pool::GameServerPool;
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 use crate::models::Match;
 
@@ -40,8 +41,7 @@ where
     T: FnOnce(Match) -> () + Send + Sync + 'static,
 {
     pub fn new(connection: Arc<Mutex<RedisAdapter>>) -> Arc<Mutex<Self>>
-    where
-    {
+where {
         connection.lock().unwrap().start_match_check();
 
         let connection = connection;
@@ -58,7 +58,7 @@ where
             .lock()
             .unwrap()
             .on_match(move |new: matchmaking_state::models::Match| {
-                copy.lock().unwrap().create(new);
+                copy.lock().unwrap().create(new).unwrap();
             });
 
         instance
@@ -72,11 +72,13 @@ where
         &mut self,
         match_info: matchmaking_state::models::Match,
     ) -> Result<(), MatchingError> {
+        info!("Sasuausu");
         let server = self.servers.get_server_by_address(match_info.address);
         let server = match server {
             Some(server) => server,
             None => return Err(MatchingError::ServerNotFound),
         };
+        info!("Creating new match on server: {:?}", server);
 
         // TODO: Create a game on the server per TCP-Connection via the Game-Servers API using JSON
 
@@ -94,7 +96,6 @@ where
                 });
             }
         }
-
         Ok(())
     }
 }

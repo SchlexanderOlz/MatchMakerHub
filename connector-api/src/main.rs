@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use handler::Handler;
-use matchmaking_state::adapters::{redis::RedisAdapter, Removable};
+use matchmaking_state::adapters::redis::RedisAdapter;
 use models::{DirectConnect, Host, Search};
 use serde_json::Value;
 use socketioxide::{
@@ -19,10 +19,11 @@ static DEFAULT_HOST_ADDRESS: &str = "0.0.0.0:4000";
 
 fn setup_listeners(io: &SocketIo, adapter: Arc<Mutex<RedisAdapter>>) {
     let match_maker = match_maker::MatchMaker::new(adapter.clone());
+    let adapter_clone = adapter.clone();
     let on_match_search = |socket: SocketRef, Data(data): Data<Value>| {
         info!("Socket.IO connected: {:?} {:?}", socket.ns(), socket.id);
         socket.emit("auth", data).ok();
-        let handler = Arc::new(Handler::new(adapter.clone()));
+        let handler = Arc::new(Handler::new(adapter_clone));
 
         // TODO: The client sends information about the search. For example the target game and configurations for the game (like f.e. multiplayer or 2-player)
         let search_handler = handler.clone();
@@ -60,13 +61,8 @@ fn setup_listeners(io: &SocketIo, adapter: Arc<Mutex<RedisAdapter>>) {
                 match_maker.lock().unwrap().notify_on_match(
                     uuid.clone().as_str(),
                     move |r#match| {
+                        info!("Match found: {:?}", r#match);
                         servers_handler.notify_match_found(&socket, r#match);
-                        adapter
-                            .clone()
-                            .lock()
-                            .unwrap()
-                            .remove(uuid.as_str())
-                            .unwrap();
                     },
                 );
             },
@@ -108,11 +104,11 @@ mod tests {
     use super::*;
     use futures_util::future::FutureExt;
     use models::GameMode;
-    use rust_socketio::asynchronous::ClientBuilder;
+    use rand::Rng;
+    use rust_socketio::asynchronous::{Client, ClientBuilder};
 
     #[tokio::test]
     async fn test_connect() {
-        tracing::subscriber::set_global_default(FmtSubscriber::default()).unwrap();
         info!("Starting server");
         let (tx, rx) = tokio::sync::oneshot::channel();
         let tx = Arc::new(Mutex::new(Some(tx)));
@@ -121,13 +117,9 @@ mod tests {
             move |_, _| {
                 let tx = Arc::clone(&tx);
                 async move {
-                    info!("Server");
+                    info!("Server received");
                     assert!(true);
-                    loop {
-                        info!("asddasdasdjlkjasadasdfasd");
-                        let _ = tx.lock().unwrap().take().unwrap().send(()).unwrap();
-                        info!("asasadasdfasd");
-                    }
+                    let _ = tx.lock().unwrap().take().unwrap().send(()).unwrap();
                 }
                 .boxed()
             }
@@ -136,12 +128,6 @@ mod tests {
         let socket = ClientBuilder::new("http://127.0.0.1:4000/")
             .namespace("/match")
             .on("servers", on_servers)
-            .on_any(|event, _, _| {
-                async move {
-                    info!("Unhandled event: {:?}", event);
-                }
-                .boxed()
-            })
             .on("connect_error", |err, _| {
                 async move {
                     info!("Error: {:?}", err);
@@ -167,6 +153,82 @@ mod tests {
 
         socket
             .emit("search", serde_json::to_value(search).unwrap())
+            .await
+            .unwrap();
+        info!("Search event emitted");
+        rx.await.unwrap();
+        socket.disconnect().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_search() {
+        tracing::subscriber::set_global_default(FmtSubscriber::default()).unwrap();
+        info!("Starting server");
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let tx = Arc::new(Mutex::new(Some(tx)));
+
+        let on_servers = {
+            move |payload, client: Client| {
+                async move {
+                    info!("Server received: {:?}", payload);
+                    client.emit("servers", payload).await.unwrap();
+                }
+                .boxed()
+            }
+        };
+
+        let on_match = {
+            move |_, _| {
+                let tx = Arc::clone(&tx);
+                async move {
+                    info!("Match received");
+                    assert!(true);
+                    let _ = tx.lock().unwrap().take().unwrap().send(()).unwrap();
+                }
+                .boxed()
+            }
+        };
+
+        let make_socket = || {
+            ClientBuilder::new("http://127.0.0.1:4000/")
+                .namespace("/match")
+                .on("servers", on_servers)
+                .on("connect_error", |err, _| {
+                    async move {
+                        info!("Error: {:?}", err);
+                    }
+                    .boxed()
+                })
+                .on("match", on_match.clone())
+                .transport_type(rust_socketio::TransportType::Polling) // WTF
+                .connect()
+        };
+
+        let socket = make_socket().await.unwrap();
+        let other_socket = make_socket().await.unwrap();
+
+        info!("Connected to server");
+
+        let make_search = || Search {
+            player_id: format!("test{}", rand::thread_rng().gen_range(0..100000)).to_string(),
+            game: "CSS Battle (Cum Sum Sus Battle)".to_string(),
+            mode: GameMode {
+                player_count: 2,
+                name: "Test Mode".to_string(),
+                computer_lobby: false,
+            },
+        };
+
+        let search = make_search();
+        let other = make_search();
+
+        socket
+            .emit("search", serde_json::to_value(search).unwrap())
+            .await
+            .unwrap();
+
+        other_socket
+            .emit("search", serde_json::to_value(other).unwrap())
             .await
             .unwrap();
         info!("Search event emitted");

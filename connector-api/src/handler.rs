@@ -6,8 +6,9 @@ use std::{
     sync::{Arc, Mutex},
     time::SystemTime,
 };
+use tracing::info;
 
-use axum::{body::Bytes};
+use axum::body::Bytes;
 use socketioxide::extract::SocketRef;
 
 use crate::models::{DirectConnect, Host, Match, Search};
@@ -53,7 +54,9 @@ impl Handler {
         // TODO: Throw some error and return it to the client if the selected game_mode is not valid. Ask the game-servers for validity. Rethink the saving the GameModes in the DB approach
 
         *self.search.lock().unwrap() = Some(data);
-        socket.bin(bin).emit("servers", servers).ok();
+        socket
+            .emit("servers", [serde_json::to_value(servers).unwrap()])
+            .ok();
     }
 
     pub fn handle_host(&self, socket: &SocketRef, data: Host, bin: Vec<Bytes>) {}
@@ -84,6 +87,7 @@ impl Handler {
             wait_start: SystemTime::now(),
         };
         let uuid = self.state.lock().unwrap().insert(searcher).unwrap();
+        info!("Searcher inserted with uuid: {}", uuid);
         self.search_id.lock().unwrap().replace(uuid);
     }
 

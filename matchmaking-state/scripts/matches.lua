@@ -8,37 +8,38 @@ local function can_play_together(players)
     for i = 1, #players do
         local player = players[i]
 
-        if redis.call('GET', player + ':matching') then
+        if redis.call('GET', player .. ':matching') then
             return false
         end
 
-        if redis.call('GET', player + ':mode:computer_lobby') then
+        if redis.call('GET', player .. ':mode:computer_lobby') == true then
             return false
         end
 
-        local player_elo = tonumber(redis.call('GET', player + ':elo'))
-        local player_mode = redis.call('GET', player + ':mode:name')
-        local player_game = redis.call('GET', player + ':game')
+        local player_elo = tonumber(redis.call('GET', player .. ':elo'))
+        local player_mode = redis.call('GET', player .. ':mode:name')
+        local player_game = redis.call('GET', player .. ':game')
         for j = i + 1, #players do
             local other = players[j]
 
-            if redis.call('GET', other + ':matching') then
+            if redis.call('GET', other .. ':matching') then
                 return false
             end
 
-            if redis.call('GET', other + ':mode:computer_lobby') then
+            if redis.call('GET', other .. ':mode:computer_lobby') == true then
                 return false
             end
 
-            if redis.call('GET', other + ':game') ~= player_game then
+
+            if redis.call('GET', other .. ':game') ~= player_game then
                 return false
             end
 
-            if redis.call('GET', other + ':mode:name') ~= player_mode then
+            if redis.call('GET', other .. ':mode:name') ~= player_mode then
                 return false
             end
 
-            if math.abs(player_elo - tonumber(redis.call('GET', other + ':elo'))) > max_elo_diff then
+            if math.abs(player_elo - tonumber(redis.call('GET', other .. ':elo'))) > max_elo_diff then
                 return false
             end
         end
@@ -54,10 +55,10 @@ local function find_server(players)
         local address = redis.call('GET', server)
         for i = 2, #players do
             local player = players[i]
-            local player_servers = redis.call('KEYS', player + ':servers:*')
+            local player_servers = redis.call('KEYS', player .. ':servers:*')
 
-            for server_key in ipairs(player_servers) do
-                if redis.call('GET', server_key) == server then
+            for _, server_key in ipairs(player_servers) do
+                if redis.call('GET', server_key) == address then
                     return address
                 end
             end
@@ -70,7 +71,7 @@ end
 for i = 1, #searcher_keys do
     local player1 = searcher_keys[i]
 
-    local player_count = tonumber(redis.call('GET', player1 + ':mode:player_count'))
+    local player_count = tonumber(redis.call('GET', player1 .. ':mode:player_count'))
 
     local players = { player1 }
     for j = i + 1, #searcher_keys do
@@ -86,17 +87,18 @@ for i = 1, #searcher_keys do
 
     if #players == player_count then
         local server = find_server(players)
+
         if server ~= nil then
             local uuid = redis.call('INCR', 'uuid_inc')
 
-            redis.call('PUBLISH', uuid + ':match:server', server)
+            redis.call('PUBLISH', uuid .. ':match:server', server)
             for y, other in ipairs(players) do
-                redis.call('SET', other + ':matching', true)
+                redis.call('SET', other .. ':matching', 1)
 
-                redis.call('PUBLISH', uuid + ':match:players:' + tostring(y), other)
+                redis.call('PUBLISH', uuid .. ':match:players:' .. tostring(y), other)
             end
 
-            redis.call('PUBLISH', uuid + ':done', #players)
+            redis.call('PUBLISH', uuid .. ':match:done', #players)
         end
     end
 end

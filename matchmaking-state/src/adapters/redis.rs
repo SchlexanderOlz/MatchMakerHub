@@ -7,6 +7,7 @@ use crate::models::{DBSearcher, Match};
 
 use super::{DataAdapter, Gettable, Insertable, Matcher, Removable, Searchable, Updateable};
 use redis::{Commands, Connection, FromRedisValue, Msg, Pipeline, PubSub};
+use tracing::{error, info};
 
 mod io;
 
@@ -15,12 +16,15 @@ const EVENT_PREFIX: &str = "events";
 pub struct RedisAdapter {
     client: redis::Client,
     connection: Arc<Mutex<redis::Connection>>,
-    handlers: Arc<Mutex<Vec<Arc<dyn Send + Sync + 'static + FnMut(Match) -> ()>>>>,
+    handlers: Arc<Mutex<Vec<Arc<dyn Send + Sync + 'static + Fn(Match) -> ()>>>>,
 }
 
 impl From<redis::Client> for RedisAdapter {
     fn from(client: redis::Client) -> Self {
-        let connection = Arc::new(Mutex::new(client.get_connection().expect(format!("Could not connect to redis server at {:?}", client).as_str())));
+        let connection =
+            Arc::new(Mutex::new(client.get_connection().expect(
+                format!("Could not connect to redis server at {:?}", client).as_str(),
+            )));
         Self {
             client,
             connection,
@@ -63,7 +67,7 @@ impl RedisAdapter {
     /// # Returns
     ///
     /// A `tokio::task::JoinHandle` that represents the spawned task.
-    pub async fn start_match_check(&self) -> tokio::task::JoinHandle<()> {
+    pub fn start_match_check(&self) -> tokio::task::JoinHandle<()> {
         let self_clone = self.clone();
         tokio::task::spawn(async move {
             self_clone.match_check().unwrap();
@@ -81,7 +85,8 @@ impl RedisAdapter {
         let mut connection = self.client.get_connection()?;
         let mut connection = connection.as_pubsub();
 
-        connection.subscribe("*:match:*")?;
+        connection.psubscribe("*:match:*")?;
+        info!("Subscribed");
 
         self.acc_searchers(connection)
     }
@@ -93,6 +98,7 @@ impl RedisAdapter {
         // TODO: Multithread this as soon as the problem with the order of messages is fixed.
         loop {
             let msg = connection.get_message().unwrap();
+            info!("Message received: {:?}", msg);
             self.handle_msg(msg, &mut found_servers, &mut found_players);
         }
     }
@@ -105,6 +111,8 @@ impl RedisAdapter {
     ) {
         let payload = msg.get_payload::<String>().unwrap();
 
+        info!("Payload: {:?}", payload);
+
         let channel = msg.get_channel_name().split(":").collect::<Vec<&str>>();
 
         let last = channel.last().unwrap();
@@ -116,7 +124,8 @@ impl RedisAdapter {
         }
 
         if last.to_string() == "done".to_string() {
-            let _ = self.on_done_msg(&uuid, payload, &found_servers, &found_players);
+            self.on_done_msg(&uuid, payload, &found_servers, &found_players)
+                .unwrap();
             // TODO: The order of messages is likely but not guaranteed. This could be a potential error and should be handled accordingly.
             return;
         }
@@ -136,7 +145,7 @@ impl RedisAdapter {
         payload: String,
         found_servers: &HashMap<String, String>,
         found_players: &HashMap<String, Vec<String>>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>> {
         let server = found_servers.get(uuid);
         if server.is_none() {
             todo!("Handle the server error accordingly");
@@ -148,7 +157,7 @@ impl RedisAdapter {
             todo!("Handle the player error accordingly");
         }
         let players = players.unwrap().clone();
-        if players.len() as i32 != payload.parse::<i32>()? - 1 {
+        if players.len() as i32 != payload.parse::<i32>()? {
             todo!("Handle the player count error accordingly");
         }
 
@@ -161,7 +170,7 @@ impl RedisAdapter {
             game: example_searcher.game,
         };
 
-        let handles = self
+        let handles: Vec<_> = self
             .handlers
             .lock()
             .unwrap()
@@ -169,26 +178,25 @@ impl RedisAdapter {
             .cloned()
             .collect::<Vec<_>>()
             .into_iter()
-            .map(move |mut fun| {
+            .map(move |fun| {
                 let match_clone = new_match.clone();
-                tokio::task::spawn(async move { Arc::get_mut(&mut fun).unwrap()(match_clone) })
-            });
+                tokio::task::spawn(async move { fun(match_clone) })
+            })
+            .collect();
 
         let mut self_clone = self.clone();
-        tokio::task::spawn(async move {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap();
+        Ok(tokio::task::spawn(async move {
+            // TODO: Tasks should be joined in async
+            for handle in handles {
+                handle.await.unwrap();
+            }
 
-            handles.for_each(|handle| runtime.block_on(async move { handle.await.unwrap() }));
             players.iter().for_each(|player| {
                 if let Err(err) = self_clone.remove(player) {
-                    eprintln!("Error removing player: {}", err);
+                    error!("Error removing player 'uuid: {}': {}", player, err);
                 }
             });
-        });
-        Ok(())
+        }))
     }
 }
 
@@ -382,7 +390,7 @@ impl Matcher for RedisAdapter {
     // NOTE: This function is a temporary inefficient implementation and will be migrated to a server-side lua script using channels
     fn on_match<T>(&mut self, handler: T)
     where
-        T: Send + Sync + 'static + FnMut(Match) -> (),
+        T: Send + Sync + 'static + Fn(Match) -> (),
     {
         self.handlers.lock().unwrap().push(Arc::new(handler));
     }

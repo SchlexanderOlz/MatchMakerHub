@@ -23,7 +23,7 @@ mod tests {
             name: "Test Server".to_owned(),
             modes: vec![GameMode {
                 name: "Test Mode".to_owned(),
-                player_count: 10,
+                player_count: 2,
                 computer_lobby: false,
             }],
             server: "127.0.0.1:3456".to_owned(),
@@ -101,7 +101,7 @@ mod tests {
             name: "Test Server".to_owned(),
             modes: vec![GameMode {
                 name: "Test Mode".to_owned(),
-                player_count: 10,
+                player_count: 2,
                 computer_lobby: false,
             }],
             server: "0.0.0.0".to_owned(),

@@ -9,30 +9,26 @@ pub struct GameMode {
     pub computer_lobby: bool,
 }
 
-
 #[derive(Deserialize, Default, Debug)]
 #[cfg_attr(test, derive(Serialize))]
 pub struct Search {
-    pub player_id: String, 
+    pub player_id: String,
     pub game: String,
     pub mode: GameMode,
 }
 
-
 #[derive(Deserialize)]
 pub struct Host {
-    pub player_id: String, 
+    pub player_id: String,
     pub invite_players: Vec<String>,
     pub game: String,
-    pub config: Value
+    pub config: Value,
 }
-
 
 #[derive(Deserialize)]
 pub struct DirectConnect {
     pub write_key: String,
 }
-
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Match {
@@ -40,4 +36,3 @@ pub struct Match {
     pub read: String,
     pub write: String,
 }
-
