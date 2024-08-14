@@ -13,6 +13,7 @@ mod io;
 
 const EVENT_PREFIX: &str = "events";
 
+// TODO: There are definetly some thread-mutability issues in the RedisAdapter due to the excesive use of Arc<Mutex>. Fix this in a #Refractoring
 pub struct RedisAdapter {
     client: redis::Client,
     connection: Arc<Mutex<redis::Connection>>,
@@ -388,7 +389,7 @@ where
 
 impl Matcher for RedisAdapter {
     // NOTE: This function is a temporary inefficient implementation and will be migrated to a server-side lua script using channels
-    fn on_match<T>(&mut self, handler: T)
+    fn on_match<T>(&self, handler: T)
     where
         T: Send + Sync + 'static + Fn(Match) -> (),
     {

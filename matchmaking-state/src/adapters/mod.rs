@@ -34,7 +34,7 @@ pub trait Removable {
 }
 
 pub trait Matcher {
-    fn on_match<T>(&mut self, handler: T)
+    fn on_match<T>(&self, handler: T)
     where
         T: Send + Sync + 'static + Fn(Match) -> ();
 }

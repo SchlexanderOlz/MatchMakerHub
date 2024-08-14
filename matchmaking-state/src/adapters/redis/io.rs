@@ -1,6 +1,6 @@
-use std::time::{Duration, SystemTime};
+use std::{collections::HashMap, hash::Hash, time::{Duration, SystemTime}};
 
-use redis::{Commands, Connection, FromRedisValue, Pipeline};
+use redis::{Commands, Connection, FromRedisValue, Pipeline, RedisWrite, ToRedisArgs};
 
 use super::{
     NotifyOnRedisEvent, RedisAdapter, RedisIdentifiable, RedisInsertWriter, RedisOutputReader, RedisUpdater, EVENT_PREFIX
@@ -50,6 +50,30 @@ where
         self.write(pipe, uuid)
     }
 }
+
+impl <K, V> RedisInsertWriter for HashMap<K, V> 
+where
+    V: ToRedisArgs,
+    K: ToRedisArgs 
+{
+    fn write(&self, pipe: &mut Pipeline, base_key: &str) -> Result<(), Box<dyn std::error::Error>> {
+        for (key, val) in self {
+            pipe.hset(format!("{}", base_key), key, val);
+        }
+        Ok(())
+    }
+}
+
+impl <K, V> RedisOutputReader for HashMap<K, V> 
+where
+    V: FromRedisValue,
+    K: FromRedisValue + std::cmp::Eq + Hash
+{
+    fn read(conn: &mut Connection, base_key: &str) -> Result<HashMap<K, V>, Box<dyn std::error::Error>> {
+        Ok(conn.hgetall(base_key)?)
+    }
+}
+
 
 fn loop_on_redis_event<T>(
     channel: String,

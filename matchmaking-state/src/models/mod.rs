@@ -1,4 +1,4 @@
-use std::time::SystemTime;
+use std::{collections::HashMap, time::SystemTime};
 
 use redisadapter_derive::{RedisIdentifiable, RedisInsertWriter, RedisOutputReader, RedisUpdater};
 
@@ -125,7 +125,7 @@ pub struct Match {
     pub address: String,
     pub game: String,
     pub players: Vec<String>,
-    pub mode: GameMode
+    pub mode: GameMode,
 }
 
 unsafe impl Send for Match {}
@@ -139,4 +139,28 @@ pub struct SearcherMatchConfig {
     pub max_elo_diff: u32,
     pub wait_time_to_elo_factor: f32,
     pub wait_time_to_server_factor: f32,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "redis", derive(RedisInsertWriter, RedisIdentifiable), name("active_matches"))]
+pub struct ActiveMatch {
+    pub match_id: String,
+    pub game: String,
+    pub mode: GameMode,
+    pub server: String,
+    pub player_read: HashMap<String, String>, // TODO: The read and write keys should be put together into one struct. For this fix the RedisInsertWriter impementation for the HashMap
+    pub player_write: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "redis", derive(RedisOutputReader, RedisIdentifiable), name("active_matches"))]
+pub struct ActiveMatchDB {
+    #[uuid]
+    pub uuid: String,
+    pub match_id: String,
+    pub game: String,
+    pub mode: GameMode,
+    pub server: String,
+    pub player_read: HashMap<String, String>, // TODO: The read and write keys should be put together into one struct. For this fix the RedisInsertWriter impementation for the HashMap
+    pub player_write: HashMap<String, String>,
 }

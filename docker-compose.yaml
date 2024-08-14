@@ -19,6 +19,21 @@ services:
       - HOST_URL=0.0.0.0:4000
       - REDIS_URL=redis://monitoring_db:6379
 
+  match-creator:
+    build:
+      context: ./match-creator
+    image: cloudolife/col-rust-docker
+    container_name: match-creator
+    command: cargo run
+    restart: on-failure
+    depends_on:
+      - monitoring_db
+    volumes:
+      - "./match-creator:/usr/match-creator"
+      - "./matchmaking-state:/usr/matchmaking-state"
+    environment:
+      - REDIS_URL=redis://monitoring_db:6379
+
   automate:
     build:
       context: ./automate
