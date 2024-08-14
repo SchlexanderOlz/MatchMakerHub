@@ -148,7 +148,7 @@ pub struct ActiveMatch {
     pub game: String,
     pub mode: GameMode,
     pub server: String,
-    pub player_read: HashMap<String, String>, // TODO: The read and write keys should be put together into one struct. For this fix the RedisInsertWriter impementation for the HashMap
+    pub read: String,
     pub player_write: HashMap<String, String>,
 }
 
@@ -161,6 +161,6 @@ pub struct ActiveMatchDB {
     pub game: String,
     pub mode: GameMode,
     pub server: String,
-    pub player_read: HashMap<String, String>, // TODO: The read and write keys should be put together into one struct. For this fix the RedisInsertWriter impementation for the HashMap
+    pub read: String,
     pub player_write: HashMap<String, String>,
 }

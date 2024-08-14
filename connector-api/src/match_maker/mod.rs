@@ -1,16 +1,13 @@
 use core::fmt;
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, Mutex},
 };
 
 use matchmaking_state::{
-    adapters::{redis::RedisAdapter, Matcher},
-    models::GameMode,
+    adapters::{redis::{NotifyOnRedisEvent, RedisAdapter}, Gettable}, models::{ActiveMatch, ActiveMatchDB},
 };
 use pool::GameServerPool;
-use serde::{Deserialize, Serialize};
-use tracing::info;
 
 use crate::models::Match;
 
@@ -30,7 +27,7 @@ impl fmt::Display for MatchingError {
 pub struct MatchMaker<T>
 where
     Self: 'static,
-    T: FnOnce(Match) -> () + Send + Sync + 'static,
+    T: FnOnce(Match) -> () + Send + Sync + 'static, // TODO: Mark this as async
 {
     servers: GameServerPool,
     handlers: HashMap<String, T>,
@@ -53,13 +50,13 @@ where {
             handlers: HashMap::new(),
         }));
 
-        let copy = instance.clone();
-        connection
-            .lock()
-            .unwrap()
-            .on_match(move |new: matchmaking_state::models::Match| {
-                copy.lock().unwrap().create(new).unwrap();
-            });
+        let matchmaker_copy = instance.clone();
+
+        let connection_clone = connection.clone();
+        ActiveMatch::on_insert(&connection.lock().unwrap(), move |uuid: String| {
+            let new: ActiveMatchDB = connection_clone.lock().unwrap().get(&uuid).unwrap();
+            matchmaker_copy.lock().unwrap().create(new).unwrap();
+        }).unwrap();
 
         instance
     }
@@ -70,29 +67,18 @@ where {
 
     pub fn create(
         &mut self,
-        match_info: matchmaking_state::models::Match,
+        match_info: matchmaking_state::models::ActiveMatchDB,
     ) -> Result<(), MatchingError> {
-        info!("Sasuausu");
-        let server = self.servers.get_server_by_address(match_info.address);
-        let server = match server {
-            Some(server) => server,
-            None => return Err(MatchingError::ServerNotFound),
-        };
-        info!("Creating new match on server: {:?}", server);
+        for (key, val) in match_info.player_write.into_iter() {
+            if let Some(handler) = self.handlers.remove(&key) {
+                let server_match = Match {
+                    address: match_info.server.clone(),
+                    read: match_info.read.clone(),
+                    write: val,
+                };
 
-        // TODO: Create a game on the server per TCP-Connection via the Game-Servers API using JSON
-
-        let server_match = Match {
-            address: server.server,
-            read: "sososo".to_string(),
-            write: "sosoosese".to_string(),
-        };
-
-        for player_uuid in match_info.players {
-            if let Some(handler) = self.handlers.remove(&player_uuid) {
-                let server_match_clone = server_match.clone();
                 tokio::task::spawn(async move {
-                    handler(server_match_clone);
+                    handler(server_match);
                 });
             }
         }
