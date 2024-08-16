@@ -34,6 +34,21 @@ services:
     environment:
       - REDIS_URL=redis://monitoring_db:6379
 
+  games-agent:
+    build:
+      context: ./games-agent
+    image: cloudolife/col-rust-docker
+    container_name: games-agent
+    command: cargo run
+    restart: on-failure
+    depends_on:
+      - monitoring_db
+    volumes:
+      - "./games-agent:/usr/games-agent"
+      - "./matchmaking-state:/usr/matchmaking-state"
+    environment:
+      - REDIS_URL=redis://monitoring_db:6379
+
   automate:
     build:
       context: ./automate

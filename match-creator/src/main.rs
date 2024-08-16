@@ -35,23 +35,18 @@ struct NewMatch {
     pub mode: GameMode,
 }
 
-#[derive(Deserialize)]
-struct Keys {
-    read: String,
-    write: String,
-}
 
 #[derive(Deserialize)]
 struct CreatedMatch {
-    pub match_id: String,
-    pub player_keys: HashMap<String, Keys>,
+    pub player_write: HashMap<String, String>,
+    pub read: String
 }
 
 async fn handle_match(new_match: Match, pool: pool::GameServerPool) {
     println!("Matched players: {:?}", new_match);
     let server = pool
         .get_server_by_address(&new_match.address)
-        .expect("Server not found");
+        .expect("Server not found"); // TODO: Handle error
     let create_match = NewMatch {
         game: new_match.game,
         players: new_match.players,
@@ -69,20 +64,11 @@ async fn handle_match(new_match: Match, pool: pool::GameServerPool) {
     let created: CreatedMatch = res.json().await.expect("Could not parse response");
 
     let insert = ActiveMatch {
-        match_id: created.match_id,
         game: create_match.game,
         mode: new_match.mode,
         server: new_match.address,
-        player_read: created
-            .player_keys
-            .iter()
-            .map(|(key, val)| (key.clone(), val.read.clone()))
-            .collect(),
-        player_write: created
-            .player_keys
-            .iter()
-            .map(|(key, val)| (key.clone(), val.write.clone()))
-            .collect(),
+        read: created.read,
+        player_write: created.player_write
     };
 
     pool.get_connection()

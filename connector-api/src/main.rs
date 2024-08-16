@@ -20,9 +20,8 @@ static DEFAULT_HOST_ADDRESS: &str = "0.0.0.0:4000";
 fn setup_listeners(io: &SocketIo, adapter: Arc<Mutex<RedisAdapter>>) {
     let match_maker = match_maker::MatchMaker::new(adapter.clone());
     let adapter_clone = adapter.clone();
-    let on_match_search = |socket: SocketRef, Data(data): Data<Value>| {
+    let on_match_search = |socket: SocketRef| {
         info!("Socket.IO connected: {:?} {:?}", socket.ns(), socket.id);
-        socket.emit("auth", data).ok();
         let handler = Arc::new(Handler::new(adapter_clone));
 
         // TODO: The client sends information about the search. For example the target game and configurations for the game (like f.e. multiplayer or 2-player)

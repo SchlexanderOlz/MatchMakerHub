@@ -4,14 +4,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use matchmaking_state::{
-    adapters::{redis::{NotifyOnRedisEvent, RedisAdapter}, Gettable}, models::{ActiveMatch, ActiveMatchDB},
-};
-use pool::GameServerPool;
-
 use crate::models::Match;
-
-mod pool;
+use matchmaking_state::{
+    adapters::{
+        redis::{NotifyOnRedisEvent, RedisAdapter},
+        Gettable,
+    },
+    models::{ActiveMatch, ActiveMatchDB},
+};
 
 #[derive(Debug)]
 pub enum MatchingError {
@@ -29,7 +29,6 @@ where
     Self: 'static,
     T: FnOnce(Match) -> () + Send + Sync + 'static, // TODO: Mark this as async
 {
-    servers: GameServerPool,
     handlers: HashMap<String, T>,
 }
 
@@ -42,11 +41,7 @@ where {
         connection.lock().unwrap().start_match_check();
 
         let connection = connection;
-        let mut servers = GameServerPool::new(connection.clone());
-        servers.populate();
-
         let instance = Arc::new(Mutex::new(Self {
-            servers,
             handlers: HashMap::new(),
         }));
 
@@ -56,7 +51,8 @@ where {
         ActiveMatch::on_insert(&connection.lock().unwrap(), move |uuid: String| {
             let new: ActiveMatchDB = connection_clone.lock().unwrap().get(&uuid).unwrap();
             matchmaker_copy.lock().unwrap().create(new).unwrap();
-        }).unwrap();
+        })
+        .unwrap();
 
         instance
     }

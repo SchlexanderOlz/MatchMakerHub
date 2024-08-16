@@ -281,7 +281,7 @@ impl<T> Insertable<T> for RedisAdapter
 where
     T: RedisInsertWriter + RedisIdentifiable + Clone,
 {
-    fn insert(&mut self, data: T) -> Result<String, Box<dyn std::error::Error>> {
+    fn insert(&self, data: T) -> Result<String, Box<dyn std::error::Error>> {
         let key = { T::next_uuid(&mut self.connection.lock().unwrap())? };
 
         let mut pipe = redis::pipe();
@@ -374,7 +374,7 @@ impl<T, U> Updateable<T, U> for RedisAdapter
 where
     U: RedisUpdater<T> + Clone,
 {
-    fn update(&mut self, uuid: &str, data: U) -> Result<(), Box<dyn std::error::Error>> {
+    fn update(&self, uuid: &str, data: U) -> Result<(), Box<dyn std::error::Error>> {
         let mut pipe = redis::pipe();
         pipe.atomic();
         data.clone().update(&mut pipe, uuid)?;

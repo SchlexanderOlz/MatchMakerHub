@@ -1,11 +1,12 @@
 use std::{collections::HashMap, time::SystemTime};
 
 use redisadapter_derive::{RedisIdentifiable, RedisInsertWriter, RedisOutputReader, RedisUpdater};
+use serde::Deserialize;
 
 #[cfg(feature = "redis")]
 use crate::adapters::redis::RedisFilter;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[cfg_attr(
     feature = "redis",
     derive(RedisInsertWriter, RedisIdentifiable),
@@ -63,7 +64,7 @@ impl RedisFilter<DBGameServer> for GameServerFilter {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[cfg_attr(feature = "redis", derive(RedisOutputReader, RedisInsertWriter))]
 pub struct GameMode {
     pub name: String,
@@ -144,7 +145,6 @@ pub struct SearcherMatchConfig {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "redis", derive(RedisInsertWriter, RedisIdentifiable), name("active_matches"))]
 pub struct ActiveMatch {
-    pub match_id: String,
     pub game: String,
     pub mode: GameMode,
     pub server: String,
@@ -157,7 +157,6 @@ pub struct ActiveMatch {
 pub struct ActiveMatchDB {
     #[uuid]
     pub uuid: String,
-    pub match_id: String,
     pub game: String,
     pub mode: GameMode,
     pub server: String,

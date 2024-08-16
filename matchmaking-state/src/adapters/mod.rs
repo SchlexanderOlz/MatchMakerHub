@@ -9,11 +9,11 @@ pub trait DataAdapter<'a, T, O, F, U>:
 }
 
 pub trait Updateable<T, U> {
-    fn update(&mut self, uuid: &str, change: U) -> Result<(), Box<dyn std::error::Error>>;
+    fn update(&self, uuid: &str, change: U) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 pub trait Insertable<T> {
-    fn insert(&mut self, data: T) -> Result<String, Box<dyn std::error::Error>>;
+    fn insert(&self, data: T) -> Result<String, Box<dyn std::error::Error>>;
 }
 
 pub trait Searchable<'a, O, F> {
