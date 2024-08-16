@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Deserialize, Default, Debug)]
+#[derive(Deserialize, Default, Debug, Clone)]
 #[cfg_attr(test, derive(Serialize))]
 pub struct GameMode {
     pub name: String,
@@ -9,7 +9,7 @@ pub struct GameMode {
     pub computer_lobby: bool,
 }
 
-#[derive(Deserialize, Default, Debug)]
+#[derive(Deserialize, Default, Debug, Clone)]
 #[cfg_attr(test, derive(Serialize))]
 pub struct Search {
     pub player_id: String,

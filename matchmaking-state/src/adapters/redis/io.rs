@@ -106,7 +106,7 @@ where
     where
         O: FromRedisValue,
     {
-        Ok(loop_on_redis_event(format!("{}:update:*:{}:*", EVENT_PREFIX, T::name()), connection.client.clone(), handler)?)
+        Ok(loop_on_redis_event(format!("{}:update:*:{}", EVENT_PREFIX, T::name()), connection.client.clone(), handler)?)
     }
 
     fn on_delete<O>(
@@ -116,7 +116,7 @@ where
     where
         O: FromRedisValue,
     {
-        Ok(loop_on_redis_event(format!("{}:delete:*:{}:*", EVENT_PREFIX, T::name()), connection.client.clone(), handler)?)
+        Ok(loop_on_redis_event(format!("{}:delete:*:{}", EVENT_PREFIX, T::name()), connection.client.clone(), handler)?)
     }
 
     fn on_insert<O>(
@@ -126,7 +126,7 @@ where
     where
         O: FromRedisValue,
     {
-        Ok(loop_on_redis_event(format!("{}:insert:*:{}:*", EVENT_PREFIX, T::name()), connection.client.clone(), handler)?)
+        Ok(loop_on_redis_event(format!("{}:insert:*:{}", EVENT_PREFIX, T::name()), connection.client.clone(), handler)?)
     }
 }
 

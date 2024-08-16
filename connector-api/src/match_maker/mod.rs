@@ -12,6 +12,7 @@ use matchmaking_state::{
     },
     models::{ActiveMatch, ActiveMatchDB},
 };
+use tracing::info;
 
 #[derive(Debug)]
 pub enum MatchingError {
@@ -36,10 +37,8 @@ impl<T> MatchMaker<T>
 where
     T: FnOnce(Match) -> () + Send + Sync + 'static,
 {
-    pub fn new(connection: Arc<Mutex<RedisAdapter>>) -> Arc<Mutex<Self>>
+    pub fn new(connection: Arc<RedisAdapter>) -> Arc<Mutex<Self>>
 where {
-        connection.lock().unwrap().start_match_check();
-
         let connection = connection;
         let instance = Arc::new(Mutex::new(Self {
             handlers: HashMap::new(),
@@ -48,8 +47,9 @@ where {
         let matchmaker_copy = instance.clone();
 
         let connection_clone = connection.clone();
-        ActiveMatch::on_insert(&connection.lock().unwrap(), move |uuid: String| {
-            let new: ActiveMatchDB = connection_clone.lock().unwrap().get(&uuid).unwrap();
+        ActiveMatch::on_insert(&connection, move |uuid: String| {
+            info!("New match created with uuid: {}", uuid);
+            let new: ActiveMatchDB = connection_clone.get(&uuid).unwrap();
             matchmaker_copy.lock().unwrap().create(new).unwrap();
         })
         .unwrap();

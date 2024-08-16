@@ -1,10 +1,10 @@
 import redis
 import time
 
-with open('../matchmaking-state/scripts/matches.lua', 'r') as file:
+with open('/usr/matchmaking-state/scripts/matches.lua', 'r') as file:
     lua_script = file.read()
 
-r = redis.StrictRedis(host='0.0.0.0', port=6379, db=0)
+r = redis.StrictRedis(host='monitoring_db', port=6379, db=0)
 
 script_sha = r.script_load(lua_script)
 

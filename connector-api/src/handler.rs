@@ -2,11 +2,12 @@ use matchmaking_state::{
     adapters::{redis::RedisAdapter, Gettable, Insertable},
     models::{DBGameServer, GameMode, Searcher},
 };
+use tracing_subscriber::field::debug;
 use std::{
     sync::{Arc, Mutex},
     time::SystemTime,
 };
-use tracing::info;
+use tracing::{debug, info};
 
 use axum::body::Bytes;
 use socketioxide::extract::SocketRef;
@@ -15,12 +16,12 @@ use crate::models::{DirectConnect, Host, Match, Search};
 
 pub struct Handler {
     search: Mutex<Option<Search>>,
-    state: Arc<Mutex<RedisAdapter>>,
+    state: Arc<RedisAdapter>,
     search_id: Mutex<Option<String>>,
 }
 
 impl Handler {
-    pub fn new(state: Arc<Mutex<RedisAdapter>>) -> Self {
+    pub fn new(state: Arc<RedisAdapter>) -> Self {
         Self {
             search: Mutex::new(None),
             state,
@@ -34,11 +35,10 @@ impl Handler {
     }
 
     pub fn handle_search(&self, socket: &SocketRef, data: Search, bin: Vec<Bytes>) {
+        info!("Received Search event: {:?}", data);
         // TODO: First verify if the user with this id, actually exists and has the correct token etc.
         let servers: Vec<String> = self
             .state
-            .lock()
-            .unwrap()
             .all()
             .unwrap()
             .filter(|server: &DBGameServer| {
@@ -86,7 +86,7 @@ impl Handler {
             servers: data,
             wait_start: SystemTime::now(),
         };
-        let uuid = self.state.lock().unwrap().insert(searcher).unwrap();
+        let uuid = self.state.insert(searcher).unwrap();
         info!("Searcher inserted with uuid: {}", uuid);
         self.search_id.lock().unwrap().replace(uuid);
     }

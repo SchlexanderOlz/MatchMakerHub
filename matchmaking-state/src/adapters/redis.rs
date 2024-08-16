@@ -87,7 +87,7 @@ impl RedisAdapter {
         let mut connection = connection.as_pubsub();
 
         connection.psubscribe("*:match:*")?;
-        info!("Subscribed");
+        info!("Subscribed to match events");
 
         self.acc_searchers(connection)
     }

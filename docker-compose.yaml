@@ -1,14 +1,13 @@
-version: '3.8'
+version: "3.8"
 
 services:
   connector-api:
     build:
       context: ./connector-api
-    image: cloudolife/col-rust-docker
     container_name: connector-api
     command: cargo run
     ports:
-    - "4000:4000"
+      - "4000:4000"
     restart: on-failure
     depends_on:
       - monitoring_db
@@ -18,11 +17,12 @@ services:
     environment:
       - HOST_URL=0.0.0.0:4000
       - REDIS_URL=redis://monitoring_db:6379
+    networks:
+      - game-night-network
 
   match-creator:
     build:
       context: ./match-creator
-    image: cloudolife/col-rust-docker
     container_name: match-creator
     command: cargo run
     restart: on-failure
@@ -33,11 +33,12 @@ services:
       - "./matchmaking-state:/usr/matchmaking-state"
     environment:
       - REDIS_URL=redis://monitoring_db:6379
+    networks:
+      - game-night-network
 
   games-agent:
     build:
       context: ./games-agent
-    image: cloudolife/col-rust-docker
     container_name: games-agent
     command: cargo run
     restart: on-failure
@@ -48,11 +49,13 @@ services:
       - "./matchmaking-state:/usr/matchmaking-state"
     environment:
       - REDIS_URL=redis://monitoring_db:6379
+    networks:
+      - game-night-network
+
 
   automate:
     build:
       context: ./automate
-    image: python:3.11-slim 
     container_name: automate
     command: "python auto.py"
     restart: on-failure
@@ -61,6 +64,8 @@ services:
     volumes:
       - "./automate:/usr/automate"
       - "./matchmaking-state/scripts:/usr/matchmaking-state/scripts"
+    networks:
+      - game-night-network
 
   monitoring_db:
     image: redis:latest
@@ -69,11 +74,12 @@ services:
       - "6379:6379"
     volumes:
       - monitoring_data:/data
-  
+    networks:
+      - game-night-network
+
+networks:
+  game-night-network:
+    external: true
 
 volumes:
   monitoring_data:
-
-networks:
-  redis_network:
-    driver: bridge

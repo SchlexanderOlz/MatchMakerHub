@@ -17,14 +17,13 @@ mod models;
 
 static DEFAULT_HOST_ADDRESS: &str = "0.0.0.0:4000";
 
-fn setup_listeners(io: &SocketIo, adapter: Arc<Mutex<RedisAdapter>>) {
+fn setup_listeners(io: &SocketIo, adapter: Arc<RedisAdapter>) {
     let match_maker = match_maker::MatchMaker::new(adapter.clone());
     let adapter_clone = adapter.clone();
     let on_match_search = |socket: SocketRef| {
         info!("Socket.IO connected: {:?} {:?}", socket.ns(), socket.id);
         let handler = Arc::new(Handler::new(adapter_clone));
 
-        // TODO: The client sends information about the search. For example the target game and configurations for the game (like f.e. multiplayer or 2-player)
         let search_handler = handler.clone();
         socket.on(
             "search",
@@ -80,9 +79,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::subscriber::set_global_default(FmtSubscriber::default())?;
 
     info!("Starting server");
-    let adapter = Arc::new(Mutex::new(
+    let adapter = Arc::new(
         RedisAdapter::connect(&default_redis_url).expect("Connection to redis database failed"),
-    ));
+    );
 
     let (layer, io) = SocketIo::new_layer();
     setup_listeners(&io, adapter);
@@ -142,7 +141,7 @@ mod tests {
 
         let search = Search {
             player_id: "test".to_string(),
-            game: "Fortnite".to_string(),
+            game: "Schnapsen".to_string(),
             mode: GameMode {
                 player_count: 2,
                 name: "duo".to_string(),
@@ -210,10 +209,10 @@ mod tests {
 
         let make_search = || Search {
             player_id: format!("test{}", rand::thread_rng().gen_range(0..100000)).to_string(),
-            game: "CSS Battle (Cum Sum Sus Battle)".to_string(),
+            game: "Schnapsen".to_string(),
             mode: GameMode {
                 player_count: 2,
-                name: "Test Mode".to_string(),
+                name: "duo".to_string(),
                 computer_lobby: false,
             },
         };

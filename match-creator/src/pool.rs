@@ -5,7 +5,7 @@ use matchmaking_state::{adapters::{redis::{NotifyOnRedisEvent, RedisAdapter}, Ge
 #[derive(Clone)]
 pub struct GameServerPool {
     pub servers: Arc<Mutex<Vec<DBGameServer>>>,
-    connection: Arc<Mutex<RedisAdapter>>
+    connection: Arc<RedisAdapter>
 }
 
 impl Into<Vec<DBGameServer>> for GameServerPool {
@@ -15,7 +15,7 @@ impl Into<Vec<DBGameServer>> for GameServerPool {
 }
 
 impl GameServerPool {
-    pub fn new(adapter: Arc<Mutex<RedisAdapter>>) -> Self {
+    pub fn new(adapter: Arc<RedisAdapter>) -> Self {
         Self {
             servers: Arc::new(Mutex::new(Vec::new())),
             connection: adapter
@@ -23,13 +23,13 @@ impl GameServerPool {
     }
 
     #[inline]
-    pub fn get_connection(&self) -> Arc<Mutex<RedisAdapter>> {
+    pub fn get_connection(&self) -> Arc<RedisAdapter> {
         self.connection.clone()
     }
 
 
     pub fn populate(&mut self) {
-        let servers = self.connection.lock().unwrap().all().unwrap().collect::<Vec<DBGameServer>>(); 
+        let servers = self.connection.all().unwrap().collect::<Vec<DBGameServer>>(); 
         *self.servers.lock().unwrap() = servers;
     }
 
@@ -46,14 +46,13 @@ impl GameServerPool {
     }
 
     /// TODO: With the current implementation of event handlers, the auto-update cannot be stopped once started.
-    pub fn auto_update(adapter: Arc<Mutex<RedisAdapter>>, servers: Arc<Mutex<Vec<DBGameServer>>>) -> () {
-        let adapter_lock = adapter.lock().unwrap();
+    pub fn auto_update(adapter: Arc<RedisAdapter>, servers: Arc<Mutex<Vec<DBGameServer>>>) -> () {
         let adapter_copy = adapter.clone();
         let server_copy = servers.clone();
 
-        GameServer::on_insert(&adapter_lock, move |uuid: String| {
+        GameServer::on_insert(&adapter.clone(), move |uuid: String| {
             let mut server_lock = server_copy.lock().unwrap();
-            let server: DBGameServer = adapter_copy.lock().unwrap().get(uuid.as_str()).unwrap(); // TODO: Handle error
+            let server: DBGameServer = adapter_copy.get(uuid.as_str()).unwrap(); // TODO: Handle error
 
             if server_lock.contains(&server) {
                 return;
@@ -63,8 +62,8 @@ impl GameServerPool {
 
         let adapter_copy = adapter.clone();
         let server_copy = servers.clone();
-        GameServer::on_update(&adapter_lock, move |uuid: String| {
-            let server: DBGameServer = adapter_copy.lock().unwrap().get(uuid.as_str()).unwrap(); // TODO: Handle error
+        GameServer::on_update(&adapter.clone(), move |uuid: String| {
+            let server: DBGameServer = adapter_copy.get(uuid.as_str()).unwrap(); // TODO: Handle error
 
             let mut servers = server_copy.lock().unwrap();
             let index = servers.iter().position(|s| s.uuid == server.uuid).unwrap(); // TODO: Handle error
@@ -73,8 +72,8 @@ impl GameServerPool {
         }).unwrap();
 
         let adapter_copy = adapter.clone();
-        GameServer::on_delete(&adapter_lock, move |uuid: String| {
-            let server: DBGameServer = adapter_copy.lock().unwrap().get(uuid.as_str()).unwrap(); // TODO: Handle error
+        GameServer::on_delete(&adapter.clone(), move |uuid: String| {
+            let server: DBGameServer = adapter_copy.get(uuid.as_str()).unwrap(); // TODO: Handle error
 
             let mut servers = servers.lock().unwrap();
             servers.retain(|s| s.uuid != server.uuid);
