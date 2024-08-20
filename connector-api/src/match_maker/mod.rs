@@ -12,7 +12,8 @@ use matchmaking_state::{
     },
     models::{ActiveMatch, ActiveMatchDB},
 };
-use tracing::info;
+use tracing::{debug, info};
+use tracing_subscriber::field::debug;
 
 #[derive(Debug)]
 pub enum MatchingError {
@@ -27,7 +28,6 @@ impl fmt::Display for MatchingError {
 
 pub struct MatchMaker<T>
 where
-    Self: 'static,
     T: FnOnce(Match) -> () + Send + Sync + 'static, // TODO: Mark this as async
 {
     handlers: HashMap<String, T>,
@@ -48,9 +48,10 @@ where {
 
         let connection_clone = connection.clone();
         ActiveMatch::on_insert(&connection, move |uuid: String| {
-            info!("New match created with uuid: {}", uuid);
+            debug!("New match created with uuid: {}", uuid);
             let new: ActiveMatchDB = connection_clone.get(&uuid).unwrap();
             matchmaker_copy.lock().unwrap().create(new).unwrap();
+            debug!("All player handlers for match {:?} notified", uuid);
         })
         .unwrap();
 
@@ -65,6 +66,8 @@ where {
         &mut self,
         match_info: matchmaking_state::models::ActiveMatchDB,
     ) -> Result<(), MatchingError> {
+        debug!("Handlers: {:?}", self.handlers.keys());
+        debug!("Match info: {:?}", match_info);
         for (key, val) in match_info.player_write.into_iter() {
             if let Some(handler) = self.handlers.remove(&key) {
                 let server_match = Match {
@@ -73,9 +76,9 @@ where {
                     write: val,
                 };
 
-                tokio::task::spawn(async move {
-                    handler(server_match);
-                });
+                tokio::task::spawn_blocking(|| handler(server_match));
+            } else {
+                debug!("No handler found for player: {}", key);
             }
         }
         Ok(())

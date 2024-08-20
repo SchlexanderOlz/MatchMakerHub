@@ -1,14 +1,19 @@
 use std::sync::{Arc, Mutex};
 
 use handler::Handler;
-use matchmaking_state::adapters::redis::RedisAdapter;
+use matchmaking_state::{
+    adapters::{redis::RedisAdapter, Gettable},
+    models::DBSearcher,
+};
 use models::{DirectConnect, Host, Search};
+use rand::rngs::adapter;
 use serde_json::Value;
 use socketioxide::{
     extract::{Bin, Data, SocketRef},
+    handler::disconnect,
     SocketIo,
 };
-use tracing::info;
+use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 mod handler;
@@ -20,18 +25,24 @@ static DEFAULT_HOST_ADDRESS: &str = "0.0.0.0:4000";
 fn setup_listeners(io: &SocketIo, adapter: Arc<RedisAdapter>) {
     let match_maker = match_maker::MatchMaker::new(adapter.clone());
     let adapter_clone = adapter.clone();
-    let on_match_search = |socket: SocketRef| {
+    let on_match_search = move |socket: SocketRef| {
         info!("Socket.IO connected: {:?} {:?}", socket.ns(), socket.id);
-        let handler = Arc::new(Handler::new(adapter_clone));
+        let handler = Arc::new(Handler::new(adapter_clone.clone()));
 
         let search_handler = handler.clone();
         socket.on(
             "search",
             move |socket: SocketRef, Data::<Search>(data), Bin(bin)| {
-                info!("Search event received: {:?}", data);
+                debug!("Search event received: {:?}", data);
                 search_handler.handle_search(&socket, data, bin)
             },
         );
+
+        let disconnect_handler = handler.clone();
+        socket.on_disconnect(move |socket: SocketRef| {
+            info!("Socket.IO disconnected: {:?}", socket.id);
+            disconnect_handler.handle_disconnect(&socket);
+        });
 
         let host_handler = handler.clone();
         socket.on(
@@ -49,20 +60,23 @@ fn setup_listeners(io: &SocketIo, adapter: Arc<RedisAdapter>) {
         );
 
         let servers_handler = handler.clone();
+        let adapter = adapter_clone.clone();
         socket.on(
             "servers",
             move |socket: SocketRef, Data::<Vec<String>>(data), Bin(bin)| {
-                info!("Servers event received: {:?}", data);
+                debug!("Servers event received: {:?}", data);
                 servers_handler.handle_servers(&socket, data, bin);
                 let uuid = servers_handler.get_searcher_id().unwrap();
+                let instance: DBSearcher = adapter.get(&uuid).unwrap();
 
-                match_maker.lock().unwrap().notify_on_match(
-                    uuid.clone().as_str(),
-                    move |r#match| {
-                        info!("Match found: {:?}", r#match);
+                match_maker
+                    .lock()
+                    .unwrap()
+                    .notify_on_match(&instance.player_id, move |r#match| {
+                        debug!("Match found: {:?}", r#match);
                         servers_handler.notify_match_found(&socket, r#match);
-                    },
-                );
+                        debug!("Match found event emitted");
+                    });
             },
         );
     };
@@ -76,7 +90,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv::dotenv().ok();
     let default_redis_url: String = std::env::var("REDIS_URL").unwrap();
 
-    tracing::subscriber::set_global_default(FmtSubscriber::default())?;
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::DEBUG)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber)?;
 
     info!("Starting server");
     let adapter = Arc::new(
@@ -141,7 +158,7 @@ mod tests {
 
         let search = Search {
             player_id: "test".to_string(),
-            game: "Schnapsen".to_string(),
+            game: "SchnapsenTest".to_string(),
             mode: GameMode {
                 player_count: 2,
                 name: "duo".to_string(),

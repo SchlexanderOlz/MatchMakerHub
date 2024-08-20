@@ -1,14 +1,14 @@
 use reqwest;
-use tracing::info;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
+use tracing::{debug, info, subscriber, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use matchmaking_state::{
-    adapters::{redis::RedisAdapter, Insertable, Matcher},
-    models::{ActiveMatch, Match},
+    adapters::{redis::RedisAdapter, Gettable, Insertable, Matcher},
+    models::{ActiveMatch, DBSearcher, Match},
 };
 use serde::{Deserialize, Serialize};
 mod pool;
@@ -37,59 +37,70 @@ struct NewMatch {
     pub mode: GameMode,
 }
 
-
 #[derive(Deserialize, Debug)]
 struct CreatedMatch {
     pub player_write: HashMap<String, String>,
-    pub read: String
+    pub read: String,
+    pub url: String,
 }
 
 async fn handle_match(new_match: Match, pool: pool::GameServerPool) {
-    info!("Matched players: {:?}", new_match);
+    debug!("Matched players: {:?}", new_match);
 
     // TODO: Write the logic for the pool to look up the existence of the game (If needed. Else remove the pool)
 
     let create_match = NewMatch {
         game: new_match.game,
-        players: new_match.players,
+        players: new_match
+            .players
+            .into_iter()
+            .map(|player_id| pool.get_connection().get(&player_id).unwrap())
+            .map(|player| {
+                let player: DBSearcher = player;
+                player.player_id
+            })
+            .collect(),
         mode: new_match.mode.clone().into(),
     };
 
     let client = reqwest::Client::new();
 
-    info!("Requesting creation of match on server: {}", new_match.address);
+    info!(
+        "Requesting creation of match on server: {}",
+        new_match.address
+    );
     let res = client
-        .post(new_match.address.as_str())
+        .post(new_match.address.as_str()) // TODO: This is a temporary sollution. Resolve the hostname here
         .json(&create_match)
         .send()
         .await
         .expect("Could not send request");
 
     let created: CreatedMatch = res.json().await.expect("Could not parse response");
-    info!("Match created: {:?}", created);
+    debug!("Match created: {:?}", created);
 
     let insert = ActiveMatch {
         game: create_match.game,
         mode: new_match.mode,
-        server: new_match.address,
+        server: created.url,
         read: created.read.clone(),
-        player_write: created.player_write
+        player_write: created.player_write,
     };
 
-    info!("Inserting match {} into State", created.read);
-    pool.get_connection()
-        .insert(insert)
-        .unwrap();
-    info!("Match {} inserted", created.read);
+    debug!("Inserting match {:?} into State", created.read);
+    pool.get_connection().insert(insert).unwrap();
+    debug!("Match {:?} inserted", created.read);
 }
 
 #[tokio::main]
 async fn main() {
-    tracing::subscriber::set_global_default(FmtSubscriber::default()).unwrap();
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::DEBUG)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber).unwrap();
     let redis_url = std::env::var("REDIS_URL").expect("REDIS_URL must be set");
-    let connector = Arc::new(
-        RedisAdapter::connect(&redis_url).expect("Could not connect to Redis database"),
-    );
+    let connector =
+        Arc::new(RedisAdapter::connect(&redis_url).expect("Could not connect to Redis database"));
     info!("Creating game-server pool");
     let mut pool = pool::GameServerPool::new(connector.clone());
     pool.populate();

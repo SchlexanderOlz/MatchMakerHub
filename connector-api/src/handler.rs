@@ -1,5 +1,5 @@
 use matchmaking_state::{
-    adapters::{redis::RedisAdapter, Gettable, Insertable},
+    adapters::{redis::RedisAdapter, Gettable, Insertable, Removable},
     models::{DBGameServer, GameMode, Searcher},
 };
 use tracing_subscriber::field::debug;
@@ -35,7 +35,7 @@ impl Handler {
     }
 
     pub fn handle_search(&self, socket: &SocketRef, data: Search, bin: Vec<Bytes>) {
-        info!("Received Search event: {:?}", data);
+        debug!("Received Search event: {:?}", data);
         // TODO: First verify if the user with this id, actually exists and has the correct token etc.
         let servers: Vec<String> = self
             .state
@@ -63,6 +63,14 @@ impl Handler {
 
     pub fn handle_join(&self, socket: &SocketRef, data: DirectConnect, bin: Vec<Bytes>) {}
 
+    pub fn handle_disconnect(&self, socket: &SocketRef) {
+        info!("Socket.IO disconnected: {:?}", socket.id);
+        if let Some(search_id) = self.search_id.lock().unwrap().as_deref() {
+            self.state.remove(search_id).unwrap();
+        }
+        *self.search.lock().unwrap() = None;
+    }
+
     pub fn handle_servers(&self, socket: &SocketRef, data: Vec<String>, bin: Vec<Bytes>) {
         let elo = 42; // TODO: Get real elo from leitner
 
@@ -87,7 +95,7 @@ impl Handler {
             wait_start: SystemTime::now(),
         };
         let uuid = self.state.insert(searcher).unwrap();
-        info!("Searcher inserted with uuid: {}", uuid);
+        debug!("Searcher inserted with uuid: {}", uuid);
         self.search_id.lock().unwrap().replace(uuid);
     }
 

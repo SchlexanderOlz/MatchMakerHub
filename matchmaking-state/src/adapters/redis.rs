@@ -258,7 +258,7 @@ where
 }
 
 impl Removable for RedisAdapter {
-    fn remove(&mut self, uuid: &str) -> Result<(), Box<dyn std::error::Error>> {
+    fn remove(&self, uuid: &str) -> Result<(), Box<dyn std::error::Error>> {
         let mut connection = self.connection.lock().unwrap();
         let iter = connection
             .scan_match(format!("{}*", uuid))?
@@ -400,8 +400,8 @@ impl Matcher for RedisAdapter {
 impl<'a, T, O, F, U> DataAdapter<'a, T, O, F, U> for RedisAdapter
 where
     T: Clone + RedisInsertWriter + RedisIdentifiable + 'a,
-    F: RedisFilter<O> + Default + 'a,
     O: RedisOutputReader + RedisIdentifiable + 'a,
+    F: RedisFilter<O> + Default + 'a,
     U: RedisUpdater<T> + Clone + 'a,
 {
 }

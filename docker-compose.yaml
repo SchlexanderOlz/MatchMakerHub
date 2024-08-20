@@ -80,6 +80,7 @@ services:
 networks:
   game-night-network:
     external: true
+    driver: bridge
 
 volumes:
   monitoring_data:

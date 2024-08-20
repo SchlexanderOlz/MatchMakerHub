@@ -30,7 +30,7 @@ pub trait Gettable<'a, O> {
 }
 
 pub trait Removable {
-    fn remove(&mut self, uuid: &str) -> Result<(), Box<dyn std::error::Error>>;
+    fn remove(&self, uuid: &str) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 pub trait Matcher {

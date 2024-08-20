@@ -1,9 +1,14 @@
-use std::{collections::HashMap, hash::Hash, time::{Duration, SystemTime}};
+use std::{
+    collections::HashMap,
+    hash::Hash,
+    time::{Duration, SystemTime},
+};
 
 use redis::{Commands, Connection, FromRedisValue, Pipeline, RedisWrite, ToRedisArgs};
 
 use super::{
-    NotifyOnRedisEvent, RedisAdapter, RedisIdentifiable, RedisInsertWriter, RedisOutputReader, RedisUpdater, EVENT_PREFIX
+    NotifyOnRedisEvent, RedisAdapter, RedisIdentifiable, RedisInsertWriter, RedisOutputReader,
+    RedisUpdater, EVENT_PREFIX,
 };
 
 impl<T> RedisInsertWriter for Vec<T>
@@ -51,10 +56,10 @@ where
     }
 }
 
-impl <K, V> RedisInsertWriter for HashMap<K, V> 
+impl<K, V> RedisInsertWriter for HashMap<K, V>
 where
     V: ToRedisArgs,
-    K: ToRedisArgs 
+    K: ToRedisArgs,
 {
     fn write(&self, pipe: &mut Pipeline, base_key: &str) -> Result<(), Box<dyn std::error::Error>> {
         for (key, val) in self {
@@ -64,16 +69,18 @@ where
     }
 }
 
-impl <K, V> RedisOutputReader for HashMap<K, V> 
+impl<K, V> RedisOutputReader for HashMap<K, V>
 where
     V: FromRedisValue,
-    K: FromRedisValue + std::cmp::Eq + Hash
+    K: FromRedisValue + std::cmp::Eq + Hash,
 {
-    fn read(conn: &mut Connection, base_key: &str) -> Result<HashMap<K, V>, Box<dyn std::error::Error>> {
+    fn read(
+        conn: &mut Connection,
+        base_key: &str,
+    ) -> Result<HashMap<K, V>, Box<dyn std::error::Error>> {
         Ok(conn.hgetall(base_key)?)
     }
 }
-
 
 fn loop_on_redis_event<T>(
     channel: String,
@@ -84,9 +91,9 @@ where
     T: FromRedisValue,
 {
     let mut connection = client.get_connection()?;
-    Ok(tokio::task::spawn(async move {
+    Ok(tokio::task::spawn_blocking(move || {
         let mut connection = connection.as_pubsub();
-        let _ = connection.psubscribe(channel); // TODO: Handle error
+        connection.psubscribe(channel).unwrap(); // TODO: Handle error
         loop {
             let msg = connection.get_message().unwrap();
             let payload = msg.get_payload::<T>().unwrap();
@@ -106,7 +113,11 @@ where
     where
         O: FromRedisValue,
     {
-        Ok(loop_on_redis_event(format!("{}:update:*:{}", EVENT_PREFIX, T::name()), connection.client.clone(), handler)?)
+        Ok(loop_on_redis_event(
+            format!("{}:update:*:{}", EVENT_PREFIX, T::name()),
+            connection.client.clone(),
+            handler,
+        )?)
     }
 
     fn on_delete<O>(
@@ -116,7 +127,11 @@ where
     where
         O: FromRedisValue,
     {
-        Ok(loop_on_redis_event(format!("{}:delete:*:{}", EVENT_PREFIX, T::name()), connection.client.clone(), handler)?)
+        Ok(loop_on_redis_event(
+            format!("{}:delete:*:{}", EVENT_PREFIX, T::name()),
+            connection.client.clone(),
+            handler,
+        )?)
     }
 
     fn on_insert<O>(
@@ -126,7 +141,11 @@ where
     where
         O: FromRedisValue,
     {
-        Ok(loop_on_redis_event(format!("{}:insert:*:{}", EVENT_PREFIX, T::name()), connection.client.clone(), handler)?)
+        Ok(loop_on_redis_event(
+            format!("{}:insert:*:{}", EVENT_PREFIX, T::name()),
+            connection.client.clone(),
+            handler,
+        )?)
     }
 }
 
