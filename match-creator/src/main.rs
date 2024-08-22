@@ -1,9 +1,6 @@
 use reqwest;
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
-use tracing::{debug, info, subscriber, Level};
+use std::{collections::HashMap, sync::Arc};
+use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use matchmaking_state::{
@@ -70,7 +67,7 @@ async fn handle_match(new_match: Match, pool: pool::GameServerPool) {
         new_match.address
     );
     let res = client
-        .post(new_match.address.as_str()) // TODO: This is a temporary sollution. Resolve the hostname here
+        .post(format!("http://{}", new_match.address)) // TODO: This is a temporary sollution. Resolve the hostname here
         .json(&create_match)
         .send()
         .await
