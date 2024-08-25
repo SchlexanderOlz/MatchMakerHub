@@ -67,12 +67,13 @@ async fn handle_match(new_match: Match, pool: pool::GameServerPool) {
         new_match.address
     );
     let res = client
-        .post(format!("http://{}", new_match.address)) // TODO: This is a temporary sollution. Resolve the hostname here
+        .post(format!("http://{}/{}/", new_match.address, new_match.mode.name)) // TODO: This is a temporary sollution. Resolve the hostname here
         .json(&create_match)
         .send()
         .await
         .expect("Could not send request");
 
+    debug!("Response: {:?}", res);
     let created: CreatedMatch = res.json().await.expect("Could not parse response");
     debug!("Match created: {:?}", created);
 
