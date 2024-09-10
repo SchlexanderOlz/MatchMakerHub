@@ -5,7 +5,7 @@ services:
     build:
       context: ./connector-api
     container_name: connector-api
-    command: cargo run
+    command: cargo run --release
     ports:
       - "4000:4000"
     restart: on-failure
@@ -21,7 +21,7 @@ services:
     build:
       context: ./match-creator
     container_name: match-creator
-    command: cargo run
+    command: cargo run --release
     restart: on-failure
     depends_on:
       - monitoring_db
@@ -34,7 +34,7 @@ services:
     build:
       context: ./games-agent
     container_name: games-agent
-    command: cargo run
+    command: cargo run --release
     restart: on-failure
     depends_on:
       - monitoring_db
