@@ -1,7 +1,9 @@
 import redis
 import time
+import os 
 
-with open('/usr/matchmaking-state/scripts/matches.lua', 'r') as file:
+REDIS_HOST = os.getenv('SCRIPT_DIR')
+with open(REDIS_HOST, 'r') as file:
     lua_script = file.read()
 
 r = redis.StrictRedis(host='monitoring_db', port=6379, db=0)
