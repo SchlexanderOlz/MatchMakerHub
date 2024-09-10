@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use handler::Handler;
-use matchmaking_state::{
+use gn_matchmaking_state::{
     adapters::{redis::RedisAdapter, Gettable},
     models::DBSearcher,
 };

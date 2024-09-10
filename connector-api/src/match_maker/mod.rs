@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::models::Match;
-use matchmaking_state::{
+use gn_matchmaking_state::{
     adapters::{
         redis::{NotifyOnRedisEvent, RedisAdapter},
         Gettable,
@@ -64,7 +64,7 @@ where {
 
     pub fn create(
         &mut self,
-        match_info: matchmaking_state::models::ActiveMatchDB,
+        match_info: gn_matchmaking_state::models::ActiveMatchDB,
     ) -> Result<(), MatchingError> {
         debug!("Handlers: {:?}", self.handlers.keys());
         debug!("Match info: {:?}", match_info);

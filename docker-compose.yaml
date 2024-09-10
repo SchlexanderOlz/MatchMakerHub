@@ -11,9 +11,6 @@ services:
     restart: on-failure
     depends_on:
       - monitoring_db
-    volumes:
-      - "./connector-api:/usr/connector-api"
-      - "./matchmaking-state:/usr/matchmaking-state"
     environment:
       - HOST_URL=0.0.0.0:4000
       - REDIS_URL=redis://monitoring_db:6379
@@ -28,9 +25,6 @@ services:
     restart: on-failure
     depends_on:
       - monitoring_db
-    volumes:
-      - "./match-creator:/usr/match-creator"
-      - "./matchmaking-state:/usr/matchmaking-state"
     environment:
       - REDIS_URL=redis://monitoring_db:6379
     networks:
@@ -44,9 +38,6 @@ services:
     restart: on-failure
     depends_on:
       - monitoring_db
-    volumes:
-      - "./games-agent:/usr/games-agent"
-      - "./matchmaking-state:/usr/matchmaking-state"
     environment:
       - REDIS_URL=redis://monitoring_db:6379
     networks:
@@ -61,9 +52,6 @@ services:
     restart: on-failure
     depends_on:
       - monitoring_db
-    volumes:
-      - "./automate:/usr/automate"
-      - "./matchmaking-state/scripts:/usr/matchmaking-state/scripts"
     networks:
       - game-night-network
 
