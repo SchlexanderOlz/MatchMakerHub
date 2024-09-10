@@ -1,5 +1,7 @@
 [package]
-name = "redisadapter-derive"
+name = "gn-redisadapter-derive"
+description = "Derive component fro the matchmaking-state component in game-night"
+license = "MIT"
 version = "0.1.0"
 edition = "2021"
 

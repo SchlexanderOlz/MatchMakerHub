@@ -1,6 +1,6 @@
 use std::{collections::HashMap, time::SystemTime};
 
-use redisadapter_derive::{RedisIdentifiable, RedisInsertWriter, RedisOutputReader, RedisUpdater};
+use gn_redisadapter_derive::{RedisIdentifiable, RedisInsertWriter, RedisOutputReader, RedisUpdater};
 use serde::Deserialize;
 
 #[cfg(feature = "redis")]
