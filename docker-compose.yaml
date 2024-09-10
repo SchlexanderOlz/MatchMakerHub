@@ -43,7 +43,6 @@ services:
     networks:
       - game-night-network
 
-
   automate:
     build:
       context: ./automate
@@ -54,6 +53,8 @@ services:
       - monitoring_db
     networks:
       - game-night-network
+    environment:
+      - SCRIPT_DIR=/usr/src/automate/scripts/matches.lua
 
   monitoring_db:
     image: redis:latest
