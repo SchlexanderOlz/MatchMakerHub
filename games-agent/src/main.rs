@@ -16,9 +16,9 @@ async fn handle_create(
     Json(body): Json<GameServer>,
 ) -> impl IntoResponse {
     info!("Trying to create server: {:?}", body);
-    let servers: Vec<DBGameServer> = state.all().unwrap().collect();
+    let mut servers = state.all().unwrap();
 
-    if servers.iter().find(|x| x.server.clone() == body.server.clone() && x.name.clone() == body.server.clone()).is_some() {
+    if servers.find(|x: &DBGameServer| x.server.clone() == body.server.clone() && x.name.clone() == body.name.clone()).is_some() {
         warn!("Tried to create a server that already exists. Creation skipped");
         return (StatusCode::BAD_REQUEST, "Server already exists");
     }
