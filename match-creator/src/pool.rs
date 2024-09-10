@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use matchmaking_state::{adapters::{redis::{NotifyOnRedisEvent, RedisAdapter}, Gettable}, models::{DBGameServer, GameServer}};
+use gn_matchmaking_state::{adapters::{redis::{NotifyOnRedisEvent, RedisAdapter}, Gettable}, models::{DBGameServer, GameServer}};
 
 #[derive(Clone)]
 pub struct GameServerPool {

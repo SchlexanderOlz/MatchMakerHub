@@ -1,4 +1,4 @@
-use matchmaking_state::{
+use gn_matchmaking_state::{
     adapters::{redis::RedisAdapter, Gettable, Insertable, Removable},
     models::{DBGameServer, GameMode, Searcher},
 };

@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
-use matchmaking_state::{
+use gn_matchmaking_state::{
     adapters::{redis::RedisAdapter, Gettable, Insertable, Matcher},
     models::{ActiveMatch, DBSearcher, Match},
 };
@@ -17,8 +17,8 @@ struct GameMode {
     pub computer_lobby: bool,
 }
 
-impl From<matchmaking_state::models::GameMode> for GameMode {
-    fn from(value: matchmaking_state::models::GameMode) -> Self {
+impl From<gn_matchmaking_state::models::GameMode> for GameMode {
+    fn from(value: gn_matchmaking_state::models::GameMode) -> Self {
         Self {
             name: value.name,
             player_count: value.player_count,

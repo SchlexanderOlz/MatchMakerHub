@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 
 use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::post, Json};
-use matchmaking_state::{adapters::{redis::RedisAdapter, Gettable, Insertable}, models::{DBGameServer, GameServer}};
+use gn_matchmaking_state::{adapters::{redis::RedisAdapter, Gettable, Insertable}, models::{DBGameServer, GameServer}};
 use tracing::{info, warn};
 use tracing_subscriber::FmtSubscriber;
 
