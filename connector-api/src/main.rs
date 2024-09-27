@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use tower::ServiceBuilder;
 use handler::Handler;
 use gn_matchmaking_state::{
     adapters::{redis::RedisAdapter, Gettable},
@@ -13,6 +14,7 @@ use socketioxide::{
     handler::disconnect,
     SocketIo,
 };
+use tower_http::{cors::{Any, CorsLayer}};
 use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
@@ -102,7 +104,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (layer, io) = SocketIo::new_layer();
     setup_listeners(&io, adapter);
-    let app = axum::Router::new().layer(layer);
+
+    let cors = CorsLayer::new().allow_origin(Any);
+    let app = axum::Router::new().layer(cors).layer(layer);
 
     let listener = tokio::net::TcpListener::bind(DEFAULT_HOST_ADDRESS)
         .await
