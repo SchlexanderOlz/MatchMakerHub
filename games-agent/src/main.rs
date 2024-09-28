@@ -1,9 +1,20 @@
 // TODO: This entire crate is a temporary implementation. Switch this to a socket based-connecton without http requests as soon as there is time.
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
-
-use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::post, Json};
-use gn_matchmaking_state::{adapters::{redis::RedisAdapter, Gettable, Insertable}, models::{DBGameServer, GameServer}};
+use axum::{
+    extract::{connect_info::IntoMakeServiceWithConnectInfo, ConnectInfo, State},
+    http::StatusCode,
+    response::IntoResponse,
+    routing::post,
+    Json,
+};
+use gn_matchmaking_state::{
+    adapters::{redis::RedisAdapter, Gettable, Insertable},
+    models::{DBGameServer, GameMode, GameServer},
+};
+use serde::Deserialize;
+use tower::ServiceBuilder;
+use tower_http::{cors::{Any, CorsLayer}, trace::TraceLayer};
 use tracing::{info, warn};
 use tracing_subscriber::FmtSubscriber;
 
@@ -35,6 +46,8 @@ async fn main() {
     let state = RedisAdapter::connect(&redis_url).unwrap();
     let listener = tokio::net::TcpListener::bind(DEFAULT_URL).await.unwrap();
     let app = axum::Router::new()
+        .layer(CorsLayer::new().allow_origin(Any))
+        .layer(ServiceBuilder::new().layer(TraceLayer::new_for_http()))
         .route("/register", post(handle_create))
         .with_state(Arc::new(state));
 
