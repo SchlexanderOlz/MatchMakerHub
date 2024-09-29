@@ -35,7 +35,7 @@ impl GameServerPool {
 
     #[inline]
     pub fn get_server_by_address(&self, address: &str) -> Option<DBGameServer> {
-        self.servers.lock().unwrap().iter().find(|s| s.server == address).cloned()
+        self.servers.lock().unwrap().iter().find(|s| s.server_pub == address).cloned()
     }
 
     pub fn start_auto_update(&self) {
