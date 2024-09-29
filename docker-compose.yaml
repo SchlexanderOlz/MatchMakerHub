@@ -61,8 +61,6 @@ services:
     container_name: monitoring_db
     ports:
       - "6379:6379"
-    volumes:
-      - monitoring_data:/data
     networks:
       - game-night-network
 
@@ -70,6 +68,3 @@ networks:
   game-night-network:
     external: true
     driver: bridge
-
-volumes:
-  monitoring_data:
