@@ -31,7 +31,8 @@ pub struct DBGameServer {
     pub uuid: String,
     pub name: String,
     pub modes: Vec<GameMode>,
-    pub server: String,
+    pub server_pub: String,
+    pub server_priv: String,
     pub token: String,
 }
 
@@ -149,7 +150,8 @@ pub struct SearcherMatchConfig {
 pub struct ActiveMatch {
     pub game: String,
     pub mode: GameMode,
-    pub server: String,
+    pub server_pub: String,
+    pub server_priv: String,
     pub read: String,
     pub player_write: HashMap<String, String>,
 }
@@ -161,7 +163,8 @@ pub struct ActiveMatchDB {
     pub uuid: String,
     pub game: String,
     pub mode: GameMode,
-    pub server: String,
+    pub server_pub: String,
+    pub server_priv: String,
     pub read: String,
     pub player_write: HashMap<String, String>,
 }

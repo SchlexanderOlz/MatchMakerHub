@@ -59,7 +59,11 @@ local function find_server(players)
 
             for _, server_key in ipairs(player_servers) do
                 if redis.call('GET', server_key) == address then
-                    return address
+                    for _, game_server_key in ipairs(redis.call('KEYS', '*:game_servers')) do
+                        if redis.call('GET', game_server_key .. ':server_pub') == address then
+                            return redis.call('GET', game_server_key .. ':server_priv')
+                        end
+                    end
                 end
             end
         end

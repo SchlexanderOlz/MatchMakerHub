@@ -71,7 +71,7 @@ where {
         for (key, val) in match_info.player_write.into_iter() {
             if let Some(handler) = self.handlers.remove(&key) {
                 let server_match = Match {
-                    address: match_info.server.clone(),
+                    address: match_info.server_pub.clone(),
                     read: match_info.read.clone(),
                     write: val,
                 };

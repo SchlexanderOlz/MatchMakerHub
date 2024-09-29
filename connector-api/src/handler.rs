@@ -49,7 +49,7 @@ impl Handler {
                 };
                 server.name == data.game && server.modes.contains(&game_mode)
             })
-            .map(|server| server.server)
+            .map(|server| server.server_pub)
             .collect();
         // TODO: Throw some error and return it to the client if the selected game_mode is not valid. Ask the game-servers for validity. Rethink the saving the GameModes in the DB approach
 

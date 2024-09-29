@@ -38,7 +38,8 @@ struct NewMatch {
 struct CreatedMatch {
     pub player_write: HashMap<String, String>,
     pub read: String,
-    pub url: String,
+    pub url_pub: String,
+    pub url_priv: String
 }
 
 async fn handle_match(new_match: Match, pool: pool::GameServerPool) {
@@ -80,7 +81,8 @@ async fn handle_match(new_match: Match, pool: pool::GameServerPool) {
     let insert = ActiveMatch {
         game: create_match.game,
         mode: new_match.mode,
-        server: created.url,
+        server_pub: created.url_pub,
+        server_priv: created.url_priv,
         read: created.read.clone(),
         player_write: created.player_write,
     };

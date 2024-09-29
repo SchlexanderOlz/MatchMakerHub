@@ -29,7 +29,7 @@ async fn handle_create(
     info!("Trying to create server: {:?}", body);
     let mut servers = state.all().unwrap();
 
-    if servers.find(|x: &DBGameServer| x.server.clone() == body.server.clone() && x.name.clone() == body.name.clone()).is_some() {
+    if servers.find(|x: &DBGameServer| x.server_pub.clone() == body.server_pub.clone() && x.name.clone() == body.name.clone()).is_some() {
         warn!("Tried to create a server that already exists. Creation skipped");
         return (StatusCode::BAD_REQUEST, "Server already exists");
     }
