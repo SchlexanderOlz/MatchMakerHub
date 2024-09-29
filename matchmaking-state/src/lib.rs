@@ -17,7 +17,7 @@ mod tests {
         use crate::adapters::redis::RedisAdapter;
         use crate::models::{GameMode, GameServer};
 
-        let mut adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
+        let adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
 
         let game_server = GameServer {
             name: "Test Server".to_owned(),
@@ -26,8 +26,8 @@ mod tests {
                 player_count: 2,
                 computer_lobby: false,
             }],
-            server: "127.0.0.1:3456".to_owned(),
-
+            server_pub: "127.0.0.1:3456".to_owned(),
+            server_priv: "127.0.0.1:3456".to_owned(),
             token: "test_token".to_owned(),
         };
         adapter.insert(game_server).unwrap();
@@ -39,7 +39,7 @@ mod tests {
         use crate::adapters::redis::RedisAdapter;
         use crate::models::GameServer;
 
-        let mut adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
+        let adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
 
         let game_server = GameServer {
             name: "Test Server".to_owned(),
@@ -48,7 +48,8 @@ mod tests {
                 player_count: 10,
                 computer_lobby: false,
             }],
-            server: "127.0.0.1:3456".to_owned(),
+            server_pub: "127.0.0.1:3456".to_owned(),
+            server_priv: "127.0.0.1:3456".to_owned(),
             token: "test_token".to_owned(),
         };
         adapter.insert(game_server.clone()).unwrap();
@@ -69,7 +70,7 @@ mod tests {
         use crate::adapters::redis::RedisAdapter;
         use crate::models::GameServer;
 
-        let mut adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
+        let adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
 
         let game_server = GameServer {
             name: "Test Server".to_owned(),
@@ -78,7 +79,8 @@ mod tests {
                 player_count: 10,
                 computer_lobby: false,
             }],
-            server: "0.0.0.0".to_owned(),
+            server_pub: "127.0.0.1:3456".to_owned(),
+            server_priv: "127.0.0.1:3456".to_owned(),
             token: "test_token".to_owned(),
         };
         let uuid = adapter.insert(game_server.clone()).unwrap();
@@ -95,7 +97,7 @@ mod tests {
         use crate::adapters::redis::RedisAdapter;
         use crate::models::{GameMode, GameServer};
 
-        let mut adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
+        let adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
 
         let game_server = GameServer {
             name: "Test Server".to_owned(),
@@ -104,7 +106,8 @@ mod tests {
                 player_count: 2,
                 computer_lobby: false,
             }],
-            server: "0.0.0.0".to_owned(),
+            server_pub: "127.0.0.1:3456".to_owned(),
+            server_priv: "127.0.0.1:3456".to_owned(),
             token: "test_token".to_owned(),
         };
         let uuid = adapter.insert(game_server.clone()).unwrap();

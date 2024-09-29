@@ -15,7 +15,8 @@ use crate::adapters::redis::RedisFilter;
 pub struct GameServer {
     pub name: String,
     pub modes: Vec<GameMode>,
-    pub server: String,
+    pub server_pub: String,
+    pub server_priv: String,
     pub token: String, // Token to authorize as the main-server at this game-server
 }
 
@@ -45,7 +46,8 @@ impl PartialEq for DBGameServer {
 pub struct GameServerUpdater {
     pub name: Option<String>,
     pub modes: Option<Vec<GameMode>>,
-    pub server: Option<String>,
+    pub server_pub: Option<String>,
+    pub server_priv: Option<String>,
     pub token: Option<String>,
 }
 
