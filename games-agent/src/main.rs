@@ -31,7 +31,7 @@ async fn handle_create(
 
     if servers.find(|x: &DBGameServer| x.server_pub.clone() == body.server_pub.clone() && x.name.clone() == body.name.clone()).is_some() {
         warn!("Tried to create a server that already exists. Creation skipped");
-        return (StatusCode::BAD_REQUEST, "Server already exists");
+        return (StatusCode::OK, "Server already exists");
     }
     state.insert(body.clone()).unwrap();
     info!("Successfully Created server: {:?}", body);
