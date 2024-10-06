@@ -1,4 +1,5 @@
 use std::{
+    any::Any,
     collections::HashMap,
     hash::Hash,
     time::{Duration, SystemTime},
@@ -6,9 +7,11 @@ use std::{
 
 use redis::{Commands, Connection, FromRedisValue, Pipeline, RedisWrite, ToRedisArgs};
 
+use crate::{adapters::InfoPublisher, models};
+
 use super::{
-    NotifyOnRedisEvent, RedisAdapter, RedisIdentifiable, RedisInsertWriter, RedisOutputReader,
-    RedisUpdater, EVENT_PREFIX,
+    NotifyOnRedisEvent, Publishable, RedisAdapter, RedisIdentifiable, RedisInfoPublisher,
+    RedisInsertWriter, RedisOutputReader, RedisUpdater, EVENT_PREFIX,
 };
 
 impl<T> RedisInsertWriter for Vec<T>
@@ -102,12 +105,12 @@ where
     }))
 }
 
-impl<T> NotifyOnRedisEvent for T
+impl<T> NotifyOnRedisEvent<redis::Connection> for T
 where
     T: RedisIdentifiable,
 {
     fn on_update<O>(
-        connection: &RedisAdapter,
+        connection: &RedisAdapter<redis::Connection>,
         handler: impl FnMut(O) -> () + Send + Sync + 'static,
     ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
     where
@@ -121,7 +124,7 @@ where
     }
 
     fn on_delete<O>(
-        connection: &RedisAdapter,
+        connection: &RedisAdapter<redis::Connection>,
         handler: impl FnMut(O) -> () + Send + Sync + 'static,
     ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
     where
@@ -135,7 +138,7 @@ where
     }
 
     fn on_insert<O>(
-        connection: &RedisAdapter,
+        connection: &RedisAdapter<redis::Connection>,
         handler: impl FnMut(O) -> () + Send + Sync + 'static,
     ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
     where
@@ -172,6 +175,20 @@ macro_rules! impl_redis_reader_primitive {
             }
         )*
     };
+}
+
+impl<T> Publishable<redis::Connection> for T
+where
+    T: ToRedisArgs,
+{
+    fn publish(
+        &self,
+        connection: &mut redis::Connection,
+        channel: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        connection.publish(channel, self)?;
+        Ok(())
+    }
 }
 
 impl_redis_writer_primitive!(

@@ -5,22 +5,28 @@ use std::{
 
 use crate::models::{DBSearcher, Match};
 
-use super::{DataAdapter, Gettable, Insertable, Matcher, Removable, Searchable, Updateable};
-use redis::{Commands, Connection, FromRedisValue, Msg, Pipeline, PubSub};
+use super::{
+    DataAdapter, Gettable, InfoPublisher, Insertable, Matcher, Publishable, Removable, Searchable,
+    Updateable,
+};
+use redis::{Commands, Connection, FromRedisValue, Msg, Pipeline, PubSub, ToRedisArgs};
 use tracing::{error, info};
 
 mod io;
 
 const EVENT_PREFIX: &str = "events";
 
+pub type RedisAdapterDefault = RedisAdapter<redis::Connection>;
+
 // TODO: There are definetly some thread-mutability issues in the RedisAdapter due to the excesive use of Arc<Mutex>. Fix this in a #Refractoring
-pub struct RedisAdapter {
-    client: redis::Client,
+pub struct RedisAdapter<I> {
+    pub client: redis::Client,
     connection: Arc<Mutex<redis::Connection>>,
+    publisher: Option<Arc<Mutex<dyn InfoPublisher<I> + Send + Sync>>>,
     handlers: Arc<Mutex<Vec<Arc<dyn Send + Sync + 'static + Fn(Match) -> ()>>>>,
 }
 
-impl From<redis::Client> for RedisAdapter {
+impl<I> From<redis::Client> for RedisAdapter<I> {
     fn from(client: redis::Client) -> Self {
         let connection =
             Arc::new(Mutex::new(client.get_connection().expect(
@@ -29,23 +35,29 @@ impl From<redis::Client> for RedisAdapter {
         Self {
             client,
             connection,
+            publisher: None,
             handlers: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
 
-impl Clone for RedisAdapter {
+impl<I> Clone for RedisAdapter<I> {
     fn clone(&self) -> Self {
         let client = self.client.clone();
         Self {
             connection: Arc::new(Mutex::new(client.get_connection().unwrap())),
+            publisher: self.publisher.clone(),
             client,
             handlers: self.handlers.clone(),
         }
     }
 }
 
-impl RedisAdapter {
+impl<I> RedisAdapter<I>
+where
+    I: 'static,
+    std::string::String: Publishable<I>,
+{
     /// Connects to a redis server using the given url.
 
     ///
@@ -61,6 +73,18 @@ impl RedisAdapter {
     pub fn connect(url: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let client = redis::Client::open(url)?;
         Ok(Self::from(client))
+    }
+
+    pub fn with_publisher(
+        mut self,
+        publisher: impl InfoPublisher<I> + Send + Sync + 'static,
+    ) -> Self {
+        self.publisher = Some(Arc::new(Mutex::new(publisher)));
+        self
+    }
+
+    pub fn reconnect(&self) -> Result<Connection, Box<dyn std::error::Error>> {
+        Ok(self.client.get_connection()?)
     }
 
     /// Starts the match check in a new task. Creates a new seperate connection to the redis server.
@@ -209,6 +233,34 @@ pub trait RedisUpdater<T> {
     fn update(&self, pipe: &mut Pipeline, uuid: &str) -> Result<(), Box<dyn std::error::Error>>;
 }
 
+#[derive(Default)]
+pub struct RedisInfoPublisher {
+    connection: Option<Connection>,
+}
+
+impl RedisInfoPublisher {
+    #[inline]
+    pub fn new(connection: Connection) -> Self {
+        Self {
+            connection: Some(connection),
+        }
+    }
+}
+
+impl InfoPublisher<redis::Connection> for RedisInfoPublisher {
+    fn publish(
+        &mut self,
+        created: &dyn Publishable<redis::Connection>,
+        event: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        created.publish(
+            self.connection.as_mut().unwrap(),
+            format!("{}:{}", EVENT_PREFIX, event),
+        )?;
+        Ok(())
+    }
+}
+
 pub trait RedisIdentifiable {
     fn name() -> String;
     fn next_uuid(connection: &mut Connection) -> Result<String, Box<dyn std::error::Error>> {
@@ -224,23 +276,23 @@ pub trait RedisInsertWriter {
 /// TODO: Currently functions in this trait require the arguments to be static. This solution prohibits removing existing handlers.
 /// This should be fixed by using some Context-Manager which provides the PubSub connection and handler. When the Context-Manager is dropped the handler and handler-thread should be killed.
 /// This trait should also be moved to the super-module
-pub trait NotifyOnRedisEvent {
+pub trait NotifyOnRedisEvent<I> {
     fn on_update<T>(
-        connection: &RedisAdapter,
+        connection: &RedisAdapter<I>,
         handler: impl FnMut(T) -> () + Send + Sync + 'static,
     ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
     where
         T: FromRedisValue;
 
     fn on_insert<T>(
-        connection: &RedisAdapter,
+        connection: &RedisAdapter<I>,
         handler: impl FnMut(T) -> () + Send + Sync + 'static,
     ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
     where
         T: FromRedisValue;
 
     fn on_delete<T>(
-        connection: &RedisAdapter,
+        connection: &RedisAdapter<I>,
         handler: impl FnMut(T) -> () + Send + Sync + 'static,
     ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>>
     where
@@ -257,7 +309,10 @@ where
     ) -> Result<Self, Box<dyn std::error::Error>>;
 }
 
-impl Removable for RedisAdapter {
+impl<I> Removable for RedisAdapter<I>
+where
+    std::string::String: Publishable<I>,
+{
     fn remove(&self, uuid: &str) -> Result<(), Box<dyn std::error::Error>> {
         let mut connection = self.connection.lock().unwrap();
         let iter = connection
@@ -272,14 +327,20 @@ impl Removable for RedisAdapter {
             pipe.query(conn)
         })?;
 
-        connection.publish(format!("{}:remove:{}", EVENT_PREFIX, uuid), uuid)?;
+        self.publisher
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .publish(&uuid.to_string(), format!("remove:{uuid}"))?;
         Ok(())
     }
 }
 
-impl<T> Insertable<T> for RedisAdapter
+impl<T, I> Insertable<T> for RedisAdapter<I>
 where
     T: RedisInsertWriter + RedisIdentifiable + Clone,
+    std::string::String: Publishable<I>,
 {
     fn insert(&self, data: T) -> Result<String, Box<dyn std::error::Error>> {
         let key = { T::next_uuid(&mut self.connection.lock().unwrap())? };
@@ -292,7 +353,13 @@ where
         {
             let mut connection = self.connection.lock().unwrap();
             pipe.query(&mut connection)?;
-            connection.publish(format!("{}:insert:{}", EVENT_PREFIX, key), key.clone())?;
+
+            self.publisher
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .publish(&key, format!("insert:{key}"))?;
         }
 
         let mut split = key.split(":");
@@ -307,7 +374,7 @@ where
     }
 }
 
-impl<'a, O> Gettable<'a, O> for RedisAdapter
+impl<'a, O, I> Gettable<'a, O> for RedisAdapter<I>
 where
     O: RedisOutputReader + RedisIdentifiable,
 {
@@ -339,7 +406,7 @@ where
     }
 }
 
-impl<'a, O, F> Searchable<'a, O, F> for RedisAdapter
+impl<'a, O, F, I> Searchable<'a, O, F> for RedisAdapter<I>
 where
     O: RedisOutputReader + RedisIdentifiable + 'a,
     F: RedisFilter<O> + Default + 'a,
@@ -370,9 +437,10 @@ where
     }
 }
 
-impl<T, U> Updateable<T, U> for RedisAdapter
+impl<T, U, I> Updateable<T, U> for RedisAdapter<I>
 where
     U: RedisUpdater<T> + Clone,
+    std::string::String: Publishable<I>,
 {
     fn update(&self, uuid: &str, data: U) -> Result<(), Box<dyn std::error::Error>> {
         let mut pipe = redis::pipe();
@@ -382,12 +450,17 @@ where
         let mut connection = self.connection.lock().unwrap();
         pipe.query(&mut connection)?;
 
-        connection.publish(format!("{}:update:{}", EVENT_PREFIX, uuid), uuid)?;
+        self.publisher
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .publish(&uuid.to_string(), format!("update:{uuid}"))?;
         Ok(())
     }
 }
 
-impl Matcher for RedisAdapter {
+impl<I> Matcher for RedisAdapter<I> {
     // NOTE: This function is a temporary inefficient implementation and will be migrated to a server-side lua script using channels
     fn on_match<T>(&self, handler: T)
     where
@@ -397,7 +470,7 @@ impl Matcher for RedisAdapter {
     }
 }
 
-impl<'a, T, O, F, U> DataAdapter<'a, T, O, F, U> for RedisAdapter
+impl<'a, T, O, F, U> DataAdapter<'a, T, O, F, U> for RedisAdapter<redis::Connection>
 where
     T: Clone + RedisInsertWriter + RedisIdentifiable + 'a,
     O: RedisOutputReader + RedisIdentifiable + 'a,

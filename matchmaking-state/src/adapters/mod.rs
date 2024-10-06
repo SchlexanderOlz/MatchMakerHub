@@ -38,3 +38,19 @@ pub trait Matcher {
     where
         T: Send + Sync + 'static + Fn(Match) -> ();
 }
+
+pub trait Publishable<T> {
+    fn publish(
+        &self,
+        connection: &mut T,
+        channel: String,
+    ) -> Result<(), Box<dyn std::error::Error>>;
+}
+
+pub trait InfoPublisher<T> {
+    fn publish(
+        &mut self,
+        created: &dyn Publishable<T>,
+        event: String,
+    ) -> Result<(), Box<dyn std::error::Error>>;
+}

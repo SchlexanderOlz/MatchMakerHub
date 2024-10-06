@@ -14,10 +14,13 @@ mod tests {
     #[cfg(feature = "redis")]
 
     fn test_redis_adapter_insert_game_server() {
-        use crate::adapters::redis::RedisAdapter;
+        use crate::adapters::redis::{RedisAdapter, RedisInfoPublisher};
         use crate::models::{GameMode, GameServer};
 
         let adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
+        let publisher = RedisInfoPublisher::new(adapter.client.get_connection().unwrap());
+        let adapter = adapter.with_publisher(publisher);
+
 
         let game_server = GameServer {
             name: "Test Server".to_owned(),
@@ -36,10 +39,14 @@ mod tests {
     #[test]
     #[cfg(feature = "redis")]
     fn test_redis_adapter_all_game_server() {
-        use crate::adapters::redis::RedisAdapter;
+        use crate::adapters::redis::{RedisAdapter, RedisInfoPublisher};
         use crate::models::GameServer;
 
         let adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
+        let publisher = RedisInfoPublisher::new(adapter.client.get_connection().unwrap());
+        let adapter = adapter.with_publisher(publisher);
+
+
 
         let game_server = GameServer {
             name: "Test Server".to_owned(),
@@ -67,10 +74,12 @@ mod tests {
     #[test]
     #[cfg(feature = "redis")]
     fn test_redis_adapter_remove_game_server() {
-        use crate::adapters::redis::RedisAdapter;
+        use crate::adapters::redis::{RedisAdapter, RedisInfoPublisher};
         use crate::models::GameServer;
 
         let adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
+        let publisher = RedisInfoPublisher::new(adapter.client.get_connection().unwrap());
+        let adapter = adapter.with_publisher(publisher);
 
         let game_server = GameServer {
             name: "Test Server".to_owned(),
@@ -94,10 +103,13 @@ mod tests {
     #[test]
     #[cfg(feature = "redis")]
     fn test_redis_adapter_update_game_server() {
-        use crate::adapters::redis::RedisAdapter;
+        use crate::adapters::redis::{RedisAdapter, RedisInfoPublisher};
         use crate::models::{GameMode, GameServer};
 
         let adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
+        let publisher = RedisInfoPublisher::new(adapter.client.get_connection().unwrap());
+        let adapter = adapter.with_publisher(publisher);
+
 
         let game_server = GameServer {
             name: "Test Server".to_owned(),
