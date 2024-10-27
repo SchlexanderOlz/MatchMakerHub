@@ -3,15 +3,12 @@ use std::sync::{Arc, Mutex};
 use tower::ServiceBuilder;
 use handler::Handler;
 use gn_matchmaking_state::{
-    adapters::{redis::RedisAdapter, Gettable},
+    adapters::{redis::{RedisAdapter, RedisAdapterDefault, RedisInfoPublisher}, Gettable},
     models::DBSearcher,
 };
 use models::{DirectConnect, Host, Search};
-use rand::rngs::adapter;
-use serde_json::Value;
 use socketioxide::{
     extract::{Bin, Data, SocketRef},
-    handler::disconnect,
     SocketIo,
 };
 use tower_http::{cors::{Any, CorsLayer}};
@@ -24,7 +21,7 @@ mod models;
 
 static DEFAULT_HOST_ADDRESS: &str = "0.0.0.0:4000";
 
-fn setup_listeners(io: &SocketIo, adapter: Arc<RedisAdapter>) {
+fn setup_listeners(io: &SocketIo, adapter: Arc<RedisAdapterDefault>) {
     let match_maker = match_maker::MatchMaker::new(adapter.clone());
     let adapter_clone = adapter.clone();
     let on_match_search = move |socket: SocketRef| {
@@ -98,9 +95,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::subscriber::set_global_default(subscriber)?;
 
     info!("Starting server");
-    let adapter = Arc::new(
-        RedisAdapter::connect(&default_redis_url).expect("Connection to redis database failed"),
-    );
+    let adapter = 
+        RedisAdapter::connect(&default_redis_url).expect("Connection to redis database failed") ;
+    let publisher = RedisInfoPublisher::new(adapter.client.get_connection().unwrap());
+    let adapter = Arc::new(adapter.with_publisher(publisher));
 
     let (layer, io) = SocketIo::new_layer();
     setup_listeners(&io, adapter);

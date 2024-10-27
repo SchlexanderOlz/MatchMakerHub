@@ -4,7 +4,7 @@ use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use gn_matchmaking_state::{
-    adapters::{redis::RedisAdapter, Gettable, Insertable, Matcher},
+    adapters::{redis::{RedisAdapter, RedisInfoPublisher}, Gettable, Insertable, Matcher},
     models::{ActiveMatch, DBSearcher, Match},
 };
 use serde::{Deserialize, Serialize};
@@ -100,8 +100,12 @@ async fn main() {
     tracing::subscriber::set_global_default(subscriber).unwrap();
     let redis_url = std::env::var("REDIS_URL").expect("REDIS_URL must be set");
     let connector =
-        Arc::new(RedisAdapter::connect(&redis_url).expect("Could not connect to Redis database"));
+        RedisAdapter::connect(&redis_url).expect("Could not connect to Redis database");
     info!("Creating game-server pool");
+
+    let connection = connector.client.get_connection().unwrap();
+    let connector = Arc::new(connector.with_publisher(RedisInfoPublisher::new(connection)));
+
     let mut pool = pool::GameServerPool::new(connector.clone());
     pool.populate();
     pool.start_auto_update();

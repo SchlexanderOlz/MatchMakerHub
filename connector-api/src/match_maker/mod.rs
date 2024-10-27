@@ -7,13 +7,12 @@ use std::{
 use crate::models::Match;
 use gn_matchmaking_state::{
     adapters::{
-        redis::{NotifyOnRedisEvent, RedisAdapter},
+        redis::{NotifyOnRedisEvent, RedisAdapterDefault},
         Gettable,
     },
     models::{ActiveMatch, ActiveMatchDB},
 };
-use tracing::{debug, info};
-use tracing_subscriber::field::debug;
+use tracing::debug;
 
 #[derive(Debug)]
 pub enum MatchingError {
@@ -37,7 +36,7 @@ impl<T> MatchMaker<T>
 where
     T: FnOnce(Match) -> () + Send + Sync + 'static,
 {
-    pub fn new(connection: Arc<RedisAdapter>) -> Arc<Mutex<Self>>
+    pub fn new(connection: Arc<RedisAdapterDefault>) -> Arc<Mutex<Self>>
 where {
         let connection = connection;
         let instance = Arc::new(Mutex::new(Self {

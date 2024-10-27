@@ -1,8 +1,7 @@
 use gn_matchmaking_state::{
-    adapters::{redis::RedisAdapter, Gettable, Insertable, Removable},
+    adapters::{redis::RedisAdapterDefault, Gettable, Insertable, Removable},
     models::{DBGameServer, GameMode, Searcher},
 };
-use tracing_subscriber::field::debug;
 use std::{
     sync::{Arc, Mutex},
     time::SystemTime,
@@ -16,12 +15,12 @@ use crate::models::{DirectConnect, Host, Match, Search};
 
 pub struct Handler {
     search: Mutex<Option<Search>>,
-    state: Arc<RedisAdapter>,
+    state: Arc<RedisAdapterDefault>,
     search_id: Mutex<Option<String>>,
 }
 
 impl Handler {
-    pub fn new(state: Arc<RedisAdapter>) -> Self {
+    pub fn new(state: Arc<RedisAdapterDefault>) -> Self {
         Self {
             search: Mutex::new(None),
             state,

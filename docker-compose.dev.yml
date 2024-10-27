@@ -1,0 +1,79 @@
+version: "3.8"
+
+services:
+  connector-api:
+    build:
+      context: ./connector-api
+      dockerfile: Dockerfile.dev
+    container_name: connector-api
+    command: cargo run
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./matchmaking-state:/usr/matchmaking-state
+    restart: on-failure
+    depends_on:
+      - monitoring_db
+    environment:
+      - HOST_URL=0.0.0.0:4000
+      - REDIS_URL=redis://monitoring_db:6379
+    networks:
+      - game-night-network
+
+  match-creator:
+    build:
+      context: ./match-creator
+      dockerfile: Dockerfile.dev
+    container_name: match-creator
+    command: cargo run
+    volumes:
+      - ./matchmaking-state:/usr/matchmaking-state
+    restart: on-failure
+    depends_on:
+      - monitoring_db
+    environment:
+      - REDIS_URL=redis://monitoring_db:6379
+    networks:
+      - game-night-network
+
+  games-agent:
+    build:
+      context: ./games-agent
+      dockerfile: Dockerfile.dev
+    container_name: games-agent
+    command: cargo run
+    volumes:
+      - ./matchmaking-state:/usr/matchmaking-state
+    restart: on-failure
+    depends_on:
+      - monitoring_db
+    environment:
+      - REDIS_URL=redis://monitoring_db:6379
+    networks:
+      - game-night-network
+
+  automate:
+    build:
+      context: ./automate
+    container_name: automate
+    command: "python auto.py"
+    restart: on-failure
+    depends_on:
+      - monitoring_db
+    networks:
+      - game-night-network
+    environment:
+      - SCRIPT_DIR=/usr/src/automate/scripts/matches.lua
+
+  monitoring_db:
+    image: redis:latest
+    container_name: monitoring_db
+    ports:
+      - "6379:6379"
+    networks:
+      - game-night-network
+
+networks:
+  game-night-network:
+    external: true
+    driver: bridge

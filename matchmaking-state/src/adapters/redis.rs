@@ -327,12 +327,12 @@ where
             pipe.query(conn)
         })?;
 
-        self.publisher
-            .as_ref()
-            .unwrap()
-            .lock()
-            .unwrap()
-            .publish(&uuid.to_string(), format!("remove:{uuid}"))?;
+        if let Some(publisher) = self.publisher.as_ref() {
+            publisher
+                .lock()
+                .unwrap()
+                .publish(&uuid.to_string(), format!("remove:{uuid}"))?;
+        }
         Ok(())
     }
 }
@@ -350,9 +350,13 @@ where
         data.write(&mut pipe, &key)?;
         pipe.set(key.clone(), "");
 
-        {
+        'query: {
             let mut connection = self.connection.lock().unwrap();
             pipe.query(&mut connection)?;
+
+            if self.publisher.is_none() {
+                break 'query;
+            }
 
             self.publisher
                 .as_ref()
@@ -450,12 +454,12 @@ where
         let mut connection = self.connection.lock().unwrap();
         pipe.query(&mut connection)?;
 
-        self.publisher
-            .as_ref()
-            .unwrap()
-            .lock()
-            .unwrap()
-            .publish(&uuid.to_string(), format!("update:{uuid}"))?;
+        if let Some(publisher) = self.publisher.as_ref() {
+            publisher
+                .lock()
+                .unwrap()
+                .publish(&uuid.to_string(), format!("update:{uuid}"))?;
+        }
         Ok(())
     }
 }

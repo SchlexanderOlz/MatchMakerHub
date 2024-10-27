@@ -9,7 +9,7 @@ use axum::{
     Json,
 };
 use gn_matchmaking_state::{
-    adapters::{redis::RedisAdapter, Gettable, Insertable},
+    adapters::{redis::{RedisAdapter, RedisAdapterDefault, RedisIdentifiable, RedisInfoPublisher}, Gettable, Insertable},
     models::{DBGameServer, GameMode, GameServer},
 };
 use serde::Deserialize;
@@ -23,7 +23,7 @@ const DEFAULT_URL: &str = "0.0.0.0:7000";
 
 
 async fn handle_create(
-    State(state): State<Arc<RedisAdapter>>,
+    State(state): State<Arc<RedisAdapterDefault>>,
     Json(body): Json<GameServer>,
 ) -> impl IntoResponse {
     info!("Trying to create server: {:?}", body);
@@ -44,6 +44,9 @@ async fn main() {
     let redis_url = std::env::var("REDIS_URL").expect("REDIS_URL must be set");
 
     let state = RedisAdapter::connect(&redis_url).unwrap();
+    let connection = state.client.get_connection().unwrap();
+    let state = state.with_publisher(RedisInfoPublisher::new(connection));
+
     let listener = tokio::net::TcpListener::bind(DEFAULT_URL).await.unwrap();
     let app = axum::Router::new()
         .layer(CorsLayer::new().allow_origin(Any))

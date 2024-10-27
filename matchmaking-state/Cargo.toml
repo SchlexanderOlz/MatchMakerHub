@@ -18,3 +18,4 @@ serde_json = "1.0.125"
 [features]
 default = ["redis"]
 redis = []
+local = ["default"]

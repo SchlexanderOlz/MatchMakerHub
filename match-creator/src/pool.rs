@@ -1,11 +1,11 @@
 use std::sync::{Arc, Mutex};
 
-use gn_matchmaking_state::{adapters::{redis::{NotifyOnRedisEvent, RedisAdapter}, Gettable}, models::{DBGameServer, GameServer}};
+use gn_matchmaking_state::{adapters::{redis::{NotifyOnRedisEvent, RedisAdapterDefault, RedisInfoPublisher}, Gettable}, models::{DBGameServer, GameServer}};
 
 #[derive(Clone)]
 pub struct GameServerPool {
     pub servers: Arc<Mutex<Vec<DBGameServer>>>,
-    connection: Arc<RedisAdapter>
+    connection: Arc<RedisAdapterDefault>
 }
 
 impl Into<Vec<DBGameServer>> for GameServerPool {
@@ -15,7 +15,7 @@ impl Into<Vec<DBGameServer>> for GameServerPool {
 }
 
 impl GameServerPool {
-    pub fn new(adapter: Arc<RedisAdapter>) -> Self {
+    pub fn new(adapter: Arc<RedisAdapterDefault>) -> Self {
         Self {
             servers: Arc::new(Mutex::new(Vec::new())),
             connection: adapter
@@ -23,7 +23,7 @@ impl GameServerPool {
     }
 
     #[inline]
-    pub fn get_connection(&self) -> Arc<RedisAdapter> {
+    pub fn get_connection(&self) -> Arc<RedisAdapterDefault> {
         self.connection.clone()
     }
 
@@ -46,7 +46,7 @@ impl GameServerPool {
     }
 
     /// TODO: With the current implementation of event handlers, the auto-update cannot be stopped once started.
-    pub fn auto_update(adapter: Arc<RedisAdapter>, servers: Arc<Mutex<Vec<DBGameServer>>>) -> () {
+    pub fn auto_update(adapter: Arc<RedisAdapterDefault>, servers: Arc<Mutex<Vec<DBGameServer>>>) -> () {
         let adapter_copy = adapter.clone();
         let server_copy = servers.clone();
 
