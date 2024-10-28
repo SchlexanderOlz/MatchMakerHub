@@ -8,7 +8,8 @@ use gn_matchmaking_state::{
 };
 use models::{DirectConnect, Host, Search};
 use socketioxide::{
-    extract::{Bin, Data, SocketRef},
+    extract::{Data, SocketRef},
+    handler::disconnect,
     SocketIo,
 };
 use tower_http::{cors::{Any, CorsLayer}};
@@ -31,9 +32,9 @@ fn setup_listeners(io: &SocketIo, adapter: Arc<RedisAdapterDefault>) {
         let search_handler = handler.clone();
         socket.on(
             "search",
-            move |socket: SocketRef, Data::<Search>(data), Bin(bin)| {
+            move |socket: SocketRef, Data::<Search>(data)| {
                 debug!("Search event received: {:?}", data);
-                search_handler.handle_search(&socket, data, bin)
+                search_handler.handle_search(&socket, data)
             },
         );
 
@@ -46,15 +47,15 @@ fn setup_listeners(io: &SocketIo, adapter: Arc<RedisAdapterDefault>) {
         let host_handler = handler.clone();
         socket.on(
             "host",
-            move |socket: SocketRef, Data::<Host>(data), Bin(bin)| {
-                host_handler.handle_host(&socket, data, bin)
+            move |socket: SocketRef, Data::<Host>(data)| {
+                host_handler.handle_host(&socket, data)
             },
         );
         let join_handler = handler.clone();
         socket.on(
             "join",
-            move |socket: SocketRef, Data::<DirectConnect>(data), Bin(bin)| {
-                join_handler.handle_join(&socket, data, bin)
+            move |socket: SocketRef, Data::<DirectConnect>(data)| {
+                join_handler.handle_join(&socket, data)
             },
         );
 
@@ -62,9 +63,9 @@ fn setup_listeners(io: &SocketIo, adapter: Arc<RedisAdapterDefault>) {
         let adapter = adapter_clone.clone();
         socket.on(
             "servers",
-            move |socket: SocketRef, Data::<Vec<String>>(data), Bin(bin)| {
+            move |socket: SocketRef, Data::<Vec<String>>(data)| {
                 debug!("Servers event received: {:?}", data);
-                servers_handler.handle_servers(&socket, data, bin);
+                servers_handler.handle_servers(&socket, data);
                 let uuid = servers_handler.get_searcher_id().unwrap();
                 let instance: DBSearcher = adapter.get(&uuid).unwrap();
 
