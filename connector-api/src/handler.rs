@@ -34,7 +34,7 @@ impl Handler {
         self.search_id.lock().unwrap().clone()
     }
 
-    pub fn handle_search(&self, socket: &SocketRef, data: Search, bin: Vec<Bytes>) {
+    pub fn handle_search(&self, socket: &SocketRef, data: Search) {
         debug!("Received Search event: {:?}", data);
         // TODO: First verify if the user with this id, actually exists and has the correct token etc.
         let servers: Vec<String> = self
@@ -55,13 +55,13 @@ impl Handler {
 
         *self.search.lock().unwrap() = Some(data);
         socket
-            .emit("servers", [serde_json::to_value(servers).unwrap()])
+            .emit("servers", &[serde_json::to_value(servers).unwrap()])
             .ok();
     }
 
-    pub fn handle_host(&self, socket: &SocketRef, data: Host, bin: Vec<Bytes>) {}
+    pub fn handle_host(&self, socket: &SocketRef, data: Host) {}
 
-    pub fn handle_join(&self, socket: &SocketRef, data: DirectConnect, bin: Vec<Bytes>) {}
+    pub fn handle_join(&self, socket: &SocketRef, data: DirectConnect) {}
 
     pub fn handle_disconnect(&self, socket: &SocketRef) {
         info!("Socket.IO disconnected: {:?}", socket.id);
@@ -71,7 +71,7 @@ impl Handler {
         *self.search.lock().unwrap() = None;
     }
 
-    pub fn handle_servers(&self, socket: &SocketRef, data: Vec<String>, bin: Vec<Bytes>) {
+    pub fn handle_servers(&self, socket: &SocketRef, data: Vec<String>) {
         let elo = 42; // TODO: Get real elo from leitner
 
         let search = self.search.lock().unwrap();
@@ -100,6 +100,6 @@ impl Handler {
     }
 
     pub fn notify_match_found(&self, socket: &SocketRef, found_match: Match) {
-        socket.emit("match", found_match).unwrap();
+        socket.emit("match", &found_match).unwrap();
     }
 }
