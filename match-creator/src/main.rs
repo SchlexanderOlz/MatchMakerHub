@@ -1,14 +1,14 @@
+use lapin::{options::{BasicPublishOptions, QueueDeclareOptions}, types::FieldTable, BasicProperties, Channel, Connection};
 use reqwest;
 use std::{collections::HashMap, sync::Arc};
 use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use gn_matchmaking_state::{
-    adapters::{redis::{RedisAdapter, RedisInfoPublisher}, Gettable, Insertable, Matcher},
     models::{ActiveMatch, DBSearcher, Match},
 };
+use gn_matchmaking_state::prelude::*;
 use serde::{Deserialize, Serialize};
-mod pool;
 
 #[derive(Serialize)]
 struct GameMode {
@@ -34,15 +34,11 @@ struct NewMatch {
     pub mode: GameMode,
 }
 
-#[derive(Deserialize, Debug)]
-struct CreatedMatch {
-    pub player_write: HashMap<String, String>,
-    pub read: String,
-    pub url_pub: String,
-    pub url_priv: String
-}
 
-async fn handle_match(new_match: Match, pool: pool::GameServerPool) {
+const CREATE_QUEUE: &str = "match-create-request";
+
+
+async fn handle_match(new_match: Match, channel: &Channel, conn: Arc<RedisAdapterDefault>) {
     debug!("Matched players: {:?}", new_match);
 
     // TODO: Write the logic for the pool to look up the existence of the game (If needed. Else remove the pool)
@@ -52,7 +48,7 @@ async fn handle_match(new_match: Match, pool: pool::GameServerPool) {
         players: new_match
             .players
             .into_iter()
-            .map(|player_id| pool.get_connection().get(&player_id).unwrap())
+            .map(|player_id| conn.get(&player_id).unwrap())
             .map(|player| {
                 let player: DBSearcher = player;
                 player.player_id
@@ -61,35 +57,12 @@ async fn handle_match(new_match: Match, pool: pool::GameServerPool) {
         mode: new_match.mode.clone().into(),
     };
 
-    let client = reqwest::Client::new();
-
     info!(
         "Requesting creation of match on server: {}",
-        new_match.address
+        new_match.region
     );
-    let res = client
-        .post(format!("http://{}/{}/", new_match.address, new_match.mode.name)) // TODO: This is a temporary sollution. Resolve the hostname here
-        .json(&create_match)
-        .send()
-        .await
-        .expect("Could not send request");
 
-    debug!("Response: {:?}", res);
-    let created: CreatedMatch = res.json().await.expect("Could not parse response");
-    debug!("Match created: {:?}", created);
-
-    let insert = ActiveMatch {
-        game: create_match.game,
-        mode: new_match.mode,
-        server_pub: created.url_pub,
-        server_priv: created.url_priv,
-        read: created.read.clone(),
-        player_write: created.player_write,
-    };
-
-    debug!("Inserting match {:?} into State", created.read);
-    pool.get_connection().insert(insert).unwrap();
-    debug!("Match {:?} inserted", created.read);
+    channel.basic_publish("", CREATE_QUEUE, BasicPublishOptions::default(), &serde_json::to_vec(&create_match).unwrap(), BasicProperties::default()).await.unwrap();
 }
 
 #[tokio::main]
@@ -101,24 +74,30 @@ async fn main() {
     let redis_url = std::env::var("REDIS_URL").expect("REDIS_URL must be set");
     let connector =
         RedisAdapter::connect(&redis_url).expect("Could not connect to Redis database");
-    info!("Creating game-server pool");
 
-    let connection = connector.client.get_connection().unwrap();
-    let connector = Arc::new(connector.with_publisher(RedisInfoPublisher::new(connection)));
+    let amqp_url = std::env::var("AMQP_URL").expect("AMQP_URL must be set");
+    let amqp_connection = Connection::connect(&amqp_url, lapin::ConnectionProperties::default())
+        .await
+        .expect("Could not connect to AMQP server");
+    let create_channel = Arc::new(amqp_connection.create_channel().await.unwrap());
+    create_channel.queue_declare(CREATE_QUEUE, QueueDeclareOptions::default(), FieldTable::default()).await.unwrap();
 
-    let mut pool = pool::GameServerPool::new(connector.clone());
-    pool.populate();
-    pool.start_auto_update();
+    let redis_connection = connector.client.get_connection().unwrap();
+    let connector = Arc::new(connector.with_publisher(RedisInfoPublisher::new(redis_connection)));
 
     info!("Started pool auto-update");
     info!("Started match check");
-    connector.on_match(move |new_match| {
+
+    let match_checker = connector.clone();
+    connector.clone().on_match(move |new_match| {
         info!("New match: {:?}", new_match);
-        let pool = pool.clone();
+        let create_channel = create_channel.clone();
+
+        let connector = connector.clone();
         let _ = tokio::spawn(async move {
-            handle_match(new_match, pool).await;
+            handle_match(new_match, &create_channel, connector.clone()).await;
         });
     });
     info!("On match handler registered");
-    connector.start_match_check().await.unwrap();
+    match_checker.start_match_check().await.unwrap();
 }

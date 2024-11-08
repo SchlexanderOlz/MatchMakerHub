@@ -12,6 +12,7 @@ pub struct GameMode {
 #[derive(Deserialize, Default, Debug, Clone)]
 #[cfg_attr(test, derive(Serialize))]
 pub struct Search {
+    pub region: String,
     pub player_id: String,
     pub game: String,
     pub mode: GameMode,

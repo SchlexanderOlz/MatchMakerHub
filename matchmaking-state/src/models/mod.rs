@@ -13,11 +13,13 @@ use crate::adapters::redis::RedisFilter;
     name("game_servers")
 )]
 pub struct GameServer {
-    pub name: String,
-    pub modes: Vec<GameMode>,
+    pub region: String,
+    pub game: String,
+    pub mode: GameMode,
     pub server_pub: String,
     pub server_priv: String,
     pub token: String, // Token to authorize as the main-server at this game-server
+    pub healthy: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -29,11 +31,13 @@ pub struct GameServer {
 pub struct DBGameServer {
     #[cfg_attr(feature = "redis", uuid)]
     pub uuid: String,
-    pub name: String,
-    pub modes: Vec<GameMode>,
+    pub region: String,
+    pub game: String,
+    pub mode: GameMode,
     pub server_pub: String,
     pub server_priv: String,
     pub token: String,
+    pub healthy: bool,
 }
 
 impl PartialEq for DBGameServer {
@@ -45,11 +49,13 @@ impl PartialEq for DBGameServer {
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "redis", derive(RedisUpdater), name("game_servers"))]
 pub struct GameServerUpdater {
-    pub name: Option<String>,
-    pub modes: Option<Vec<GameMode>>,
+    pub game: Option<String>,
+    pub mode: Option<GameMode>,
+    pub region: Option<String>,
     pub server_pub: Option<String>,
     pub server_priv: Option<String>,
     pub token: Option<String>,
+    pub healthy: Option<bool>,
 }
 
 #[derive(Debug, Default)]
@@ -63,7 +69,7 @@ impl RedisFilter<DBGameServer> for GameServerFilter {
         if self.game.is_none() {
             return true;
         }
-        return self.game.clone().unwrap() == check.name;
+        return self.game.clone().unwrap() == check.game;
     }
 }
 
@@ -86,7 +92,7 @@ pub struct Searcher {
     pub elo: u32,
     pub mode: GameMode,
     pub game: String,
-    pub servers: Vec<String>,
+    pub region: String,
     pub wait_start: SystemTime,
 }
 
@@ -97,7 +103,7 @@ pub struct SearcherUpdate {
     pub elo: Option<u32>,
     pub mode: Option<GameMode>,
     pub game: Option<String>,
-    pub servers: Option<Vec<String>>,
+    pub region: Option<String>,
     pub wait_start: Option<SystemTime>,
 }
 
@@ -114,7 +120,7 @@ pub struct DBSearcher {
     pub elo: u32,
     pub mode: GameMode,
     pub game: String,
-    pub servers: Vec<String>,
+    pub region: String,
     pub wait_start: SystemTime,
 }
 
@@ -126,7 +132,7 @@ pub struct SearcherFilter {
 
 #[derive(Debug, Clone)]
 pub struct Match {
-    pub address: String,
+    pub region: String,
     pub game: String,
     pub players: Vec<String>,
     pub mode: GameMode,
@@ -152,6 +158,7 @@ pub struct ActiveMatch {
     pub mode: GameMode,
     pub server_pub: String,
     pub server_priv: String,
+    pub region: String,
     pub read: String,
     pub player_write: HashMap<String, String>,
 }
@@ -165,6 +172,7 @@ pub struct ActiveMatchDB {
     pub mode: GameMode,
     pub server_pub: String,
     pub server_priv: String,
+    pub region: String,
     pub read: String,
     pub player_write: HashMap<String, String>,
 }

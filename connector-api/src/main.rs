@@ -1,18 +1,14 @@
 use std::sync::{Arc, Mutex};
 
-use tower::ServiceBuilder;
 use handler::Handler;
-use gn_matchmaking_state::{
-    adapters::{redis::{RedisAdapter, RedisAdapterDefault, RedisInfoPublisher}, Gettable},
-    models::DBSearcher,
-};
+use gn_matchmaking_state::models::DBSearcher;
+use gn_matchmaking_state::prelude::*;
 use models::{DirectConnect, Host, Search};
 use socketioxide::{
     extract::{Data, SocketRef},
-    handler::disconnect,
     SocketIo,
 };
-use tower_http::{cors::{Any, CorsLayer}};
+use tower_http::cors::{Any, CorsLayer};
 use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
@@ -34,7 +30,23 @@ fn setup_listeners(io: &SocketIo, adapter: Arc<RedisAdapterDefault>) {
             "search",
             move |socket: SocketRef, Data::<Search>(data)| {
                 debug!("Search event received: {:?}", data);
-                search_handler.handle_search(&socket, data)
+                if let Err(err) = search_handler.handle_search(&socket, data) {
+                    socket.emit("error", &err.to_string()).ok();
+                    return;
+                }
+
+                let uuid = search_handler.get_searcher_id().unwrap();
+                let instance: DBSearcher = adapter.get(&uuid).unwrap();
+
+                match_maker
+                    .lock()
+                    .unwrap()
+                    .notify_on_match(&instance.player_id, move |r#match| {
+                        debug!("Match found: {:?}", r#match);
+                        search_handler.notify_match_found(&socket, r#match);
+                        debug!("Match found event emitted");
+                    });
+
             },
         );
 
@@ -56,27 +68,6 @@ fn setup_listeners(io: &SocketIo, adapter: Arc<RedisAdapterDefault>) {
             "join",
             move |socket: SocketRef, Data::<DirectConnect>(data)| {
                 join_handler.handle_join(&socket, data)
-            },
-        );
-
-        let servers_handler = handler.clone();
-        let adapter = adapter_clone.clone();
-        socket.on(
-            "servers",
-            move |socket: SocketRef, Data::<Vec<String>>(data)| {
-                debug!("Servers event received: {:?}", data);
-                servers_handler.handle_servers(&socket, data);
-                let uuid = servers_handler.get_searcher_id().unwrap();
-                let instance: DBSearcher = adapter.get(&uuid).unwrap();
-
-                match_maker
-                    .lock()
-                    .unwrap()
-                    .notify_on_match(&instance.player_id, move |r#match| {
-                        debug!("Match found: {:?}", r#match);
-                        servers_handler.notify_match_found(&socket, r#match);
-                        debug!("Match found event emitted");
-                    });
             },
         );
     };
@@ -160,6 +151,7 @@ mod tests {
         info!("Connected to server");
 
         let search = Search {
+            region: "eu".to_string(),
             player_id: "test".to_string(),
             game: "SchnapsenTest".to_string(),
             mode: GameMode {
@@ -228,6 +220,7 @@ mod tests {
         info!("Connected to server");
 
         let make_search = || Search {
+            region: "eu".to_string(),
             player_id: format!("test{}", rand::thread_rng().gen_range(0..100000)).to_string(),
             game: "Schnapsen".to_string(),
             mode: GameMode {

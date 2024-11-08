@@ -33,7 +33,7 @@ impl Handler {
         self.search_id.lock().unwrap().clone()
     }
 
-    pub fn handle_search(&self, socket: &SocketRef, data: Search) {
+    pub fn handle_search(&self, socket: &SocketRef, data: Search) -> Result<(), Box<dyn std::error::Error + 'static>> {
         debug!("Received Search event: {:?}", data);
         // TODO: First verify if the user with this id, actually exists and has the correct token etc.
         let servers: Vec<String> = self
@@ -46,16 +46,38 @@ impl Handler {
                     player_count: data.mode.player_count,
                     computer_lobby: data.mode.computer_lobby,
                 };
-                server.name == data.game && server.modes.contains(&game_mode)
+                server.healthy && server.game == data.game && server.mode == game_mode && server.region == data.region
             })
             .map(|server| server.server_pub)
             .collect();
+
+        debug!("Servers found for search ({:?}): {:?}", data, servers);
+
+        if servers.is_empty() {
+            return Err("No such server online".into());
+        }
         // TODO: Throw some error and return it to the client if the selected game_mode is not valid. Ask the game-servers for validity. Rethink the saving the GameModes in the DB approach
 
-        *self.search.lock().unwrap() = Some(data);
-        socket
-            .emit("servers", &[serde_json::to_value(servers).unwrap()])
-            .ok();
+        let elo = 42; // TODO: Get real elo from leitner
+
+        let search = data;
+
+        let searcher = Searcher {
+            player_id: search.player_id.clone(),
+            elo,
+            game: search.game.clone(),
+            mode: GameMode {
+                name: search.mode.name.clone(),
+                player_count: search.mode.player_count,
+                computer_lobby: search.mode.computer_lobby,
+            },
+            region: search.region.clone(),
+            wait_start: SystemTime::now(),
+        };
+        let uuid = self.state.insert(searcher).unwrap();
+        debug!("Searcher inserted with uuid: {}", uuid);
+        self.search_id.lock().unwrap().replace(uuid);
+        Ok(())
     }
 
     pub fn handle_host(&self, socket: &SocketRef, data: Host) {}
@@ -68,34 +90,6 @@ impl Handler {
             self.state.remove(search_id).unwrap();
         }
         *self.search.lock().unwrap() = None;
-    }
-
-    pub fn handle_servers(&self, socket: &SocketRef, data: Vec<String>) {
-        let elo = 42; // TODO: Get real elo from leitner
-
-        let search = self.search.lock().unwrap();
-
-        if search.is_none() {
-            socket.emit("reject", "Search has not been started").ok();
-            return;
-        }
-        let search = search.as_ref().unwrap();
-
-        let searcher = Searcher {
-            player_id: search.player_id.clone(),
-            elo,
-            game: search.game.clone(),
-            mode: GameMode {
-                name: search.mode.name.clone(),
-                player_count: search.mode.player_count,
-                computer_lobby: search.mode.computer_lobby,
-            },
-            servers: data,
-            wait_start: SystemTime::now(),
-        };
-        let uuid = self.state.insert(searcher).unwrap();
-        debug!("Searcher inserted with uuid: {}", uuid);
-        self.search_id.lock().unwrap().replace(uuid);
     }
 
     pub fn notify_match_found(&self, socket: &SocketRef, found_match: Match) {

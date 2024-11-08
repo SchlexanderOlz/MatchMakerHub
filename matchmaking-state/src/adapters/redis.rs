@@ -13,8 +13,8 @@ use redis::{Commands, Connection, FromRedisValue, Msg, Pipeline, PubSub, ToRedis
 use tracing::{error, info};
 
 mod io;
+pub mod publisher;
 
-const EVENT_PREFIX: &str = "events";
 
 pub type RedisAdapterDefault = RedisAdapter<redis::Connection>;
 
@@ -117,21 +117,21 @@ where
     }
 
     fn acc_searchers(mut self, mut connection: PubSub) -> Result<(), Box<dyn std::error::Error>> {
-        let mut found_servers: HashMap<String, String> = HashMap::new();
+        let mut found_regions: HashMap<String, String> = HashMap::new();
         let mut found_players: HashMap<String, Vec<String>> = HashMap::new();
 
         // TODO: Multithread this as soon as the problem with the order of messages is fixed.
         loop {
             let msg = connection.get_message().unwrap();
             info!("Message received: {:?}", msg);
-            self.handle_msg(msg, &mut found_servers, &mut found_players);
+            self.handle_msg(msg, &mut found_regions, &mut found_players);
         }
     }
 
     fn handle_msg(
         &mut self,
         msg: Msg,
-        found_servers: &mut HashMap<String, String>,
+        found_regions: &mut HashMap<String, String>,
         found_players: &mut HashMap<String, Vec<String>>,
     ) {
         let payload = msg.get_payload::<String>().unwrap();
@@ -143,13 +143,13 @@ where
         let last = channel.last().unwrap();
         let uuid = channel.first().unwrap().to_string();
 
-        if last.to_string() == "server".to_string() {
-            found_servers.insert(channel.first().unwrap().to_string(), payload);
+        if last.to_string() == "region".to_string() {
+            found_regions.insert(channel.first().unwrap().to_string(), payload);
             return;
         }
 
         if last.to_string() == "done".to_string() {
-            self.on_done_msg(&uuid, payload, &found_servers, &found_players)
+            self.on_done_msg(&uuid, payload, &found_regions, &found_players)
                 .unwrap();
             // TODO: The order of messages is likely but not guaranteed. This could be a potential error and should be handled accordingly.
             return;
@@ -168,14 +168,14 @@ where
         &mut self,
         uuid: &String,
         payload: String,
-        found_servers: &HashMap<String, String>,
+        found_regions: &HashMap<String, String>,
         found_players: &HashMap<String, Vec<String>>,
     ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>> {
-        let server = found_servers.get(uuid);
-        if server.is_none() {
+        let region = found_regions.get(uuid);
+        if region.is_none() {
             todo!("Handle the server error accordingly");
         }
-        let server = server.unwrap();
+        let region = region.unwrap().clone();
 
         let players = found_players.get(uuid);
         if players.is_none() || players.unwrap().len() == 0 {
@@ -189,7 +189,7 @@ where
         let example_searcher: DBSearcher = self.get(players.get(0).unwrap())?;
 
         let new_match = Match {
-            address: server.to_string(),
+            region,
             players: players.clone(),
             mode: example_searcher.mode,
             game: example_searcher.game,
@@ -209,7 +209,7 @@ where
             })
             .collect();
 
-        let mut self_clone = self.clone();
+        let self_clone = self.clone();
         Ok(tokio::task::spawn(async move {
             // TODO: Tasks should be joined in async
             for handle in handles {
@@ -233,33 +233,7 @@ pub trait RedisUpdater<T> {
     fn update(&self, pipe: &mut Pipeline, uuid: &str) -> Result<(), Box<dyn std::error::Error>>;
 }
 
-#[derive(Default)]
-pub struct RedisInfoPublisher {
-    connection: Option<Connection>,
-}
 
-impl RedisInfoPublisher {
-    #[inline]
-    pub fn new(connection: Connection) -> Self {
-        Self {
-            connection: Some(connection),
-        }
-    }
-}
-
-impl InfoPublisher<redis::Connection> for RedisInfoPublisher {
-    fn publish(
-        &mut self,
-        created: &dyn Publishable<redis::Connection>,
-        event: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        created.publish(
-            self.connection.as_mut().unwrap(),
-            format!("{}:{}", EVENT_PREFIX, event),
-        )?;
-        Ok(())
-    }
-}
 
 pub trait RedisIdentifiable {
     fn name() -> String;
