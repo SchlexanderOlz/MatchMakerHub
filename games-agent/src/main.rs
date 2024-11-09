@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use gn_matchmaking_state::models::{ActiveMatch, DBGameServer, GameMode, GameServer};
+use gn_matchmaking_state::models::{ActiveMatch, ActiveMatchDB, DBGameServer, GameMode, GameServer};
 use gn_matchmaking_state::prelude::*;
 use healthcheck::HealthCheck;
 use lapin::options::{
@@ -22,6 +22,7 @@ use tracing_subscriber::FmtSubscriber;
 const CREATE_MATCH_QUEUE: &str = "match-created";
 const CREATE_GAME_QUEUE: &str = "game-created";
 const HEALTH_CHECK_QUEUE: &str = "health-check";
+const RESULT_MATCH_QUEUE: &str = "match-result";
 
 mod healthcheck;
 
@@ -60,6 +61,14 @@ impl Into<GameServer> for GameServerCreateRequest {
     }
 }
 
+#[derive(Deserialize, Debug, Clone)]
+pub struct MatchResult {
+    pub match_id: String,
+    pub winner: String,
+    pub points: u8,
+    pub ranked: HashMap<String, u8>,
+}
+
 async fn on_match_created(created_match: CreatedMatch, conn: Arc<RedisAdapterDefault>) {
     debug!("Match created: {:?}", created_match);
 
@@ -76,6 +85,18 @@ async fn on_match_created(created_match: CreatedMatch, conn: Arc<RedisAdapterDef
     debug!("Inserting match {:?} into State", created_match.read);
     conn.insert(insert).unwrap();
     debug!("Match {:?} inserted", created_match.read);
+}
+
+async fn on_match_result(
+    result: MatchResult,
+    conn: Arc<RedisAdapterDefault>,
+) {
+    debug!("Match result: {:?}", result);
+    let mut matches = conn.all().unwrap();
+    if let Some(match_) = matches.find(|x: &ActiveMatchDB| x.read.clone() == result.match_id) {
+        conn.remove(&match_.uuid).unwrap();
+        debug!("Match {:?} removed", match_.uuid);
+    }
 }
 
 async fn on_game_created(
@@ -95,6 +116,40 @@ async fn on_game_created(
     let server = conn.insert(created_game.clone()).unwrap();
     info!("Successfully Created server: {:?}", created_game);
     Ok(server)
+}
+
+async fn listen_for_match_result(channel: Arc<Channel>, conn: Arc<RedisAdapterDefault>) {
+    channel
+        .queue_declare(
+            RESULT_MATCH_QUEUE,
+            QueueDeclareOptions::default(),
+            FieldTable::default(),
+        )
+        .await
+        .unwrap();
+
+    let mut consumer = channel
+        .basic_consume(
+            RESULT_MATCH_QUEUE,
+            "games-agent-match-result",
+            BasicConsumeOptions::default(),
+            FieldTable::default(),
+        )
+        .await
+        .unwrap();
+
+    info!("Listening for match result events");
+    while let Some(delivery) = consumer.next().await {
+        debug!("Received match result event: {:?}", delivery);
+        let conn = conn.clone();
+        tokio::spawn(async move {
+            let delivery = delivery.expect("error in consumer");
+            delivery.ack(BasicAckOptions::default()).await.expect("ack");
+
+            let result: MatchResult = serde_json::from_slice(&delivery.data).unwrap();
+            on_match_result(result, conn.clone()).await;
+        });
+    }
 }
 
 async fn listen_for_match_created(channel: Arc<Channel>, conn: Arc<RedisAdapterDefault>) {
@@ -271,7 +326,14 @@ async fn main() {
         tokio::spawn(listen_for_healthcheck(channel, state.clone()))
     };
 
+    let listen_for_match_result = {
+        let state = state.clone();
+        let channel = amqp_channel.clone();
+        tokio::spawn(listen_for_match_result(channel, state.clone()))
+    };
+
     listen_for_healthcheck.await.unwrap();
     listen_for_match_created.await.unwrap();
+    listen_for_match_result.await.unwrap();
     listen_for_game_created.await.unwrap();
 }
