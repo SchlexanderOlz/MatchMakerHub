@@ -4,7 +4,7 @@ use reqwest::{self, header::COOKIE};
 
 use crate::models::EZAUTHValidationResponse;
 
-pub fn validate_user(session_token: String, ezauth_url: String) -> Option<EZAUTHValidationResponse> {
+pub fn validate_user(session_token: &str, ezauth_url: &str) -> Option<EZAUTHValidationResponse> {
     let client = reqwest::blocking::Client::new();
 
     let response = client

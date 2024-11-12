@@ -100,26 +100,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cors = CorsLayer::new().allow_origin(Any);
 
-    let ezauth_url = std::env::var("EZAUTH_URL").unwrap();
-    let ezauth_url = ezauth_url.to_string();
-
     let app =
         axum::Router::new()
             .layer(cors)
-            .layer(layer)
-            .layer(ValidateRequestHeaderLayer::custom(
-                move |request: &mut request::Request<body::Body>| {
-                    let headers = request.headers();
-
-                    let session_token = headers.get("Authorization").unwrap().to_str().unwrap();
-                    let response =
-                        ezauth::validate_user(session_token.to_string(), ezauth_url.to_string());
-                    if response.is_none() {
-                        return Err("Unauthorized".into_response());
-                    }
-                    Ok(())
-                },
-            ));
+            .layer(layer);
 
     let listener = tokio::net::TcpListener::bind(DEFAULT_HOST_ADDRESS)
         .await
@@ -174,6 +158,7 @@ mod tests {
         info!("Connected to server");
 
         let search = Search {
+            session_token: "saus".to_string(),
             region: "eu".to_string(),
             player_id: "test".to_string(),
             game: "SchnapsenTest".to_string(),
@@ -243,6 +228,7 @@ mod tests {
         info!("Connected to server");
 
         let make_search = || Search {
+            session_token: "saus".to_string(),
             region: "eu".to_string(),
             player_id: format!("test{}", rand::thread_rng().gen_range(0..100000)).to_string(),
             game: "Schnapsen".to_string(),

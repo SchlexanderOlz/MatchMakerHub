@@ -67,12 +67,13 @@ where {
     ) -> Result<(), MatchingError> {
         debug!("Handlers: {:?}", self.handlers.keys());
         debug!("Match info: {:?}", match_info);
-        for (key, val) in match_info.player_write.into_iter() {
-            if let Some(handler) = self.handlers.remove(&key) {
+        for (key, val) in match_info.player_write.iter() {
+            if let Some(handler) = self.handlers.remove(key) {
                 let server_match = Match {
                     address: match_info.server_pub.clone(),
                     read: match_info.read.clone(),
-                    write: val,
+                    write: val.clone(),
+                    players: match_info.player_write.keys().cloned().collect(),
                 };
 
                 tokio::task::spawn_blocking(|| handler(server_match));

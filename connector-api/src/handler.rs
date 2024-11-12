@@ -11,20 +11,25 @@ use tracing::{debug, info};
 use axum::body::Bytes;
 use socketioxide::extract::SocketRef;
 
-use crate::models::{DirectConnect, Host, Match, Search};
+use crate::{ezauth, models::{DirectConnect, Host, Match, Search}};
 
 pub struct Handler {
     search: Mutex<Option<Search>>,
     state: Arc<RedisAdapterDefault>,
     search_id: Mutex<Option<String>>,
+    ezauth_url: String
 }
 
 impl Handler {
     pub fn new(state: Arc<RedisAdapterDefault>) -> Self {
+        let ezauth_url = std::env::var("EZAUTH_URL").unwrap();
+        let ezauth_url = ezauth_url.to_string();
+
         Self {
             search: Mutex::new(None),
             state,
             search_id: Mutex::new(None),
+            ezauth_url
         }
     }
 
@@ -36,6 +41,14 @@ impl Handler {
     pub fn handle_search(&self, socket: &SocketRef, data: Search) -> Result<(), Box<dyn std::error::Error + 'static>> {
         debug!("Received Search event: {:?}", data);
         // TODO: First verify if the user with this id, actually exists and has the correct token etc.
+
+        let validation = ezauth::validate_user(&data.session_token, &self.ezauth_url);
+
+        if validation.is_none() || validation.as_ref().unwrap()._id != data.player_id {
+            socket.emit("reject", "unauthorized").unwrap();
+            return Ok(());
+        }
+
         let servers: Vec<String> = self
             .state
             .all()

@@ -14,6 +14,7 @@ pub struct GameMode {
 pub struct Search {
     pub region: String,
     pub player_id: String,
+    pub session_token: String,
     pub game: String,
     pub mode: GameMode,
 }
@@ -36,6 +37,7 @@ pub struct Match {
     pub address: String,
     pub read: String,
     pub write: String,
+    pub players: Vec<String>
 }
 
 
