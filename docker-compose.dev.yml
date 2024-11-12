@@ -33,7 +33,7 @@ services:
       - redis
     environment:
       - REDIS_URL=redis://redis:6379
-      - AMQP_URL=amqp://admin:Password1@rabbitmq:5672
+      - AMQP_URL=${AMQP_URL}
     networks:
       - game-night-network
 
@@ -50,7 +50,7 @@ services:
       - redis
     environment:
       - REDIS_URL=redis://redis:6379
-      - AMQP_URL=amqp://admin:Password1@rabbitmq:5672
+      - AMQP_URL=${AMQP_URL}
     networks:
       - game-night-network
 
