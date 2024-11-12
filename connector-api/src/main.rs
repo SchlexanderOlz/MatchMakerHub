@@ -1,17 +1,27 @@
 use std::sync::{Arc, Mutex};
 
-use handler::Handler;
+use axum::{
+    body,
+    http::{request, HeaderMap},
+    response::IntoResponse,
+};
 use gn_matchmaking_state::models::DBSearcher;
 use gn_matchmaking_state::prelude::*;
+use handler::Handler;
 use models::{DirectConnect, Host, Search};
+use reqwest::header::COOKIE;
 use socketioxide::{
     extract::{Data, SocketRef},
     SocketIo,
 };
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::{
+    cors::{Any, CorsLayer},
+    validate_request::ValidateRequestHeaderLayer,
+};
 use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
+mod ezauth;
 mod handler;
 mod match_maker;
 mod models;
@@ -26,29 +36,25 @@ fn setup_listeners(io: &SocketIo, adapter: Arc<RedisAdapterDefault>) {
         let handler = Arc::new(Handler::new(adapter_clone.clone()));
 
         let search_handler = handler.clone();
-        socket.on(
-            "search",
-            move |socket: SocketRef, Data::<Search>(data)| {
-                debug!("Search event received: {:?}", data);
-                if let Err(err) = search_handler.handle_search(&socket, data) {
-                    socket.emit("error", &err.to_string()).ok();
-                    return;
-                }
+        socket.on("search", move |socket: SocketRef, Data::<Search>(data)| {
+            debug!("Search event received: {:?}", data);
+            if let Err(err) = search_handler.handle_search(&socket, data) {
+                socket.emit("error", &err.to_string()).ok();
+                return;
+            }
 
-                let uuid = search_handler.get_searcher_id().unwrap();
-                let instance: DBSearcher = adapter.get(&uuid).unwrap();
+            let uuid = search_handler.get_searcher_id().unwrap();
+            let instance: DBSearcher = adapter.get(&uuid).unwrap();
 
-                match_maker
-                    .lock()
-                    .unwrap()
-                    .notify_on_match(&instance.player_id, move |r#match| {
-                        debug!("Match found: {:?}", r#match);
-                        search_handler.notify_match_found(&socket, r#match);
-                        debug!("Match found event emitted");
-                    });
-
-            },
-        );
+            match_maker
+                .lock()
+                .unwrap()
+                .notify_on_match(&instance.player_id, move |r#match| {
+                    debug!("Match found: {:?}", r#match);
+                    search_handler.notify_match_found(&socket, r#match);
+                    debug!("Match found event emitted");
+                });
+        });
 
         let disconnect_handler = handler.clone();
         socket.on_disconnect(move |socket: SocketRef| {
@@ -57,12 +63,9 @@ fn setup_listeners(io: &SocketIo, adapter: Arc<RedisAdapterDefault>) {
         });
 
         let host_handler = handler.clone();
-        socket.on(
-            "host",
-            move |socket: SocketRef, Data::<Host>(data)| {
-                host_handler.handle_host(&socket, data)
-            },
-        );
+        socket.on("host", move |socket: SocketRef, Data::<Host>(data)| {
+            host_handler.handle_host(&socket, data)
+        });
         let join_handler = handler.clone();
         socket.on(
             "join",
@@ -87,8 +90,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::subscriber::set_global_default(subscriber)?;
 
     info!("Starting server");
-    let adapter = 
-        RedisAdapter::connect(&default_redis_url).expect("Connection to redis database failed") ;
+    let adapter =
+        RedisAdapter::connect(&default_redis_url).expect("Connection to redis database failed");
     let publisher = RedisInfoPublisher::new(adapter.client.get_connection().unwrap());
     let adapter = Arc::new(adapter.with_publisher(publisher));
 
@@ -96,7 +99,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_listeners(&io, adapter);
 
     let cors = CorsLayer::new().allow_origin(Any);
-    let app = axum::Router::new().layer(cors).layer(layer);
+
+    let ezauth_url = std::env::var("EZAUTH_URL").unwrap();
+    let ezauth_url = ezauth_url.to_string();
+
+    let app =
+        axum::Router::new()
+            .layer(cors)
+            .layer(layer)
+            .layer(ValidateRequestHeaderLayer::custom(
+                move |request: &mut request::Request<body::Body>| {
+                    let headers = request.headers();
+
+                    let session_token = headers.get("Authorization").unwrap().to_str().unwrap();
+                    let response =
+                        ezauth::validate_user(session_token.to_string(), ezauth_url.to_string());
+                    if response.is_none() {
+                        return Err("Unauthorized".into_response());
+                    }
+                    Ok(())
+                },
+            ));
 
     let listener = tokio::net::TcpListener::bind(DEFAULT_HOST_ADDRESS)
         .await

@@ -37,3 +37,16 @@ pub struct Match {
     pub read: String,
     pub write: String,
 }
+
+
+
+
+#[derive(Deserialize)]
+pub struct EZAUTHValidationResponse {
+    pub _id: String,
+    pub username: String,
+    pub email: String,
+
+    #[serde(rename = "createdAt")]
+    pub created_at: String
+}
