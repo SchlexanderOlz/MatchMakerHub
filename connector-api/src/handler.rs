@@ -1,6 +1,6 @@
 use gn_matchmaking_state::{
     adapters::{redis::RedisAdapterDefault, Gettable, Insertable, Removable},
-    models::{DBGameServer, GameMode, Searcher},
+    models::{DBGameServer, DBSearcher, GameMode, Searcher},
 };
 use std::{
     sync::{Arc, Mutex},
@@ -11,13 +11,16 @@ use tracing::{debug, info};
 use axum::body::Bytes;
 use socketioxide::extract::SocketRef;
 
-use crate::{ezauth, models::{DirectConnect, Host, Match, Search}};
+use crate::{
+    ezauth,
+    models::{DirectConnect, Host, Match, Search},
+};
 
 pub struct Handler {
     search: Mutex<Option<Search>>,
     state: Arc<RedisAdapterDefault>,
     search_id: Mutex<Option<String>>,
-    ezauth_url: String
+    ezauth_url: String,
 }
 
 impl Handler {
@@ -29,7 +32,7 @@ impl Handler {
             search: Mutex::new(None),
             state,
             search_id: Mutex::new(None),
-            ezauth_url
+            ezauth_url,
         }
     }
 
@@ -38,16 +41,20 @@ impl Handler {
         self.search_id.lock().unwrap().clone()
     }
 
-    pub fn handle_search(&self, socket: &SocketRef, data: Search) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    pub fn handle_search(
+        &self,
+        socket: &SocketRef,
+        data: Search,
+    ) -> Result<(), Box<dyn std::error::Error + 'static>> {
         debug!("Received Search event: {:?}", data);
-        // TODO: First verify if the user with this id, actually exists and has the correct token etc.
-
         let validation = ezauth::validate_user(&data.session_token, &self.ezauth_url);
 
-        if validation.is_none() || validation.as_ref().unwrap()._id != data.player_id {
+        if validation.is_none() {
             socket.emit("reject", "unauthorized").unwrap();
             return Ok(());
         }
+
+        let validation = validation.unwrap();
 
         let servers: Vec<String> = self
             .state
@@ -59,7 +66,10 @@ impl Handler {
                     player_count: data.mode.player_count,
                     computer_lobby: data.mode.computer_lobby,
                 };
-                server.healthy && server.game == data.game && server.mode == game_mode && server.region == data.region
+                server.healthy
+                    && server.game == data.game
+                    && server.mode == game_mode
+                    && server.region == data.region
             })
             .map(|server| server.server_pub)
             .collect();
@@ -75,8 +85,19 @@ impl Handler {
 
         let search = data;
 
+        // TODO: Replace all function with find function
+        if let Some(searcher) = self
+            .state
+            .all()
+            .unwrap()
+            .find(|x: &DBSearcher| x.player_id == validation._id)
+        {
+            self.search_id.lock().unwrap().replace(searcher.uuid);
+            return Ok(());
+        }
+
         let searcher = Searcher {
-            player_id: search.player_id.clone(),
+            player_id: validation._id.clone(),
             elo,
             game: search.game.clone(),
             mode: GameMode {

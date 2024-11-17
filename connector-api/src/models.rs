@@ -13,7 +13,6 @@ pub struct GameMode {
 #[cfg_attr(test, derive(Serialize))]
 pub struct Search {
     pub region: String,
-    pub player_id: String,
     pub session_token: String,
     pub game: String,
     pub mode: GameMode,

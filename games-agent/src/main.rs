@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-// TODO: This entire crate is a temporary implementation. Switch this to a socket based-connecton without http requests as soon as there is time.
 use futures_lite::StreamExt;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
@@ -12,7 +11,6 @@ use lapin::options::{
     BasicAckOptions, BasicConsumeOptions, BasicNackOptions, BasicPublishOptions,
     QueueDeclareOptions,
 };
-use lapin::protocol::channel;
 use lapin::types::FieldTable;
 use lapin::{BasicProperties, Channel, Connection};
 use serde::Deserialize;

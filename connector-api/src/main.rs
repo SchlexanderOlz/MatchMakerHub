@@ -1,15 +1,9 @@
 use std::sync::{Arc, Mutex};
 
-use axum::{
-    body,
-    http::{request, HeaderMap},
-    response::IntoResponse,
-};
 use gn_matchmaking_state::models::DBSearcher;
 use gn_matchmaking_state::prelude::*;
 use handler::Handler;
 use models::{DirectConnect, Host, Search};
-use reqwest::header::COOKIE;
 use socketioxide::{
     extract::{Data, SocketRef},
     SocketIo,
@@ -100,10 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cors = CorsLayer::new().allow_origin(Any);
 
-    let app =
-        axum::Router::new()
-            .layer(cors)
-            .layer(layer);
+    let app = axum::Router::new().layer(cors).layer(layer);
 
     let listener = tokio::net::TcpListener::bind(DEFAULT_HOST_ADDRESS)
         .await
@@ -120,7 +111,6 @@ mod tests {
     use super::*;
     use futures_util::future::FutureExt;
     use models::GameMode;
-    use rand::Rng;
     use rust_socketio::asynchronous::{Client, ClientBuilder};
 
     #[tokio::test]
@@ -160,7 +150,6 @@ mod tests {
         let search = Search {
             session_token: "saus".to_string(),
             region: "eu".to_string(),
-            player_id: "test".to_string(),
             game: "SchnapsenTest".to_string(),
             mode: GameMode {
                 player_count: 2,
@@ -230,7 +219,6 @@ mod tests {
         let make_search = || Search {
             session_token: "saus".to_string(),
             region: "eu".to_string(),
-            player_id: format!("test{}", rand::thread_rng().gen_range(0..100000)).to_string(),
             game: "Schnapsen".to_string(),
             mode: GameMode {
                 player_count: 2,
