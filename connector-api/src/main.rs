@@ -30,25 +30,28 @@ fn setup_listeners(io: &SocketIo, adapter: Arc<RedisAdapterDefault>) {
         let handler = Arc::new(Handler::new(adapter_clone.clone()));
 
         let search_handler = handler.clone();
-        socket.on("search", move |socket: SocketRef, Data::<Search>(data)| {
-            debug!("Search event received: {:?}", data);
-            if let Err(err) = search_handler.handle_search(&socket, data) {
-                socket.emit("error", &err.to_string()).ok();
-                return;
-            }
+        socket.on(
+            "search",
+            move |socket: SocketRef, Data::<Search>(data)| async move {
+                debug!("Search event received: {:?}", data);
+                if let Err(err) = search_handler.handle_search(&socket, data).await {
+                    socket.emit("error", &err.to_string()).ok();
+                    return;
+                }
 
-            let uuid = search_handler.get_searcher_id().unwrap();
-            let instance: DBSearcher = adapter.get(&uuid).unwrap();
+                let uuid = search_handler.get_searcher_id().unwrap();
+                let instance: DBSearcher = adapter.get(&uuid).unwrap();
 
-            match_maker
-                .lock()
-                .unwrap()
-                .notify_on_match(&instance.player_id, move |r#match| {
-                    debug!("Match found: {:?}", r#match);
-                    search_handler.notify_match_found(&socket, r#match);
-                    debug!("Match found event emitted");
-                });
-        });
+                match_maker
+                    .lock()
+                    .unwrap()
+                    .notify_on_match(&instance.player_id, move |r#match| {
+                        debug!("Match found: {:?}", r#match);
+                        search_handler.notify_match_found(&socket, r#match);
+                        debug!("Match found event emitted");
+                    });
+            },
+        );
 
         let disconnect_handler = handler.clone();
         socket.on_disconnect(move |socket: SocketRef| {

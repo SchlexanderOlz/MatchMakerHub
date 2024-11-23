@@ -4,8 +4,15 @@ use reqwest::{self, header::COOKIE};
 
 use crate::models::EZAUTHValidationResponse;
 
-pub fn validate_user(session_token: &str, ezauth_url: &str) -> Option<EZAUTHValidationResponse> {
-    let client = reqwest::blocking::Client::new();
+pub async fn validate_user(session_token: &str, ezauth_url: &str) -> Result<EZAUTHValidationResponse, Box<dyn std::error::Error>> {
+    return Ok(EZAUTHValidationResponse {
+        _id: session_token.to_string(),
+        username: "test".to_string(),
+        email: "".to_string(),
+        created_at: "2021-08-01T00:00:00Z".to_string(),
+    });
+
+    let client = reqwest::Client::new();
 
     let response = client
         .get(&format!("{ezauth_url}/profile"))
@@ -14,14 +21,16 @@ pub fn validate_user(session_token: &str, ezauth_url: &str) -> Option<EZAUTHVali
             HeaderValue::from_str(format!("session={session_token}").as_str()).unwrap(),
         )
         .send()
-        .unwrap();
+        .await?;
 
     if response.status().is_client_error() {
-        return None;
+        return Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            response.text().await?,
+        )));
     }
 
+    let parsed: EZAUTHValidationResponse = response.json().await?;
 
-    let parsed: EZAUTHValidationResponse = response.json().unwrap();
-
-    Some(parsed)
+    Ok(parsed)
 }

@@ -41,20 +41,13 @@ impl Handler {
         self.search_id.lock().unwrap().clone()
     }
 
-    pub fn handle_search(
+    pub async fn handle_search(
         &self,
         socket: &SocketRef,
         data: Search,
     ) -> Result<(), Box<dyn std::error::Error + 'static>> {
         debug!("Received Search event: {:?}", data);
-        let validation = ezauth::validate_user(&data.session_token, &self.ezauth_url);
-
-        if validation.is_none() {
-            socket.emit("reject", "unauthorized").unwrap();
-            return Ok(());
-        }
-
-        let validation = validation.unwrap();
+        let validation = ezauth::validate_user(&data.session_token, &self.ezauth_url).await?;
 
         let servers: Vec<String> = self
             .state
