@@ -5,7 +5,7 @@ services:
     build:
       context: ./connector-api
     container_name: connector-api
-    command: cargo run --release
+    command: connector-api
     ports:
       - "4000:4000"
     restart: on-failure
@@ -22,7 +22,7 @@ services:
     build:
       context: ./match-creator
     container_name: match-creator
-    command: cargo run --release
+    command: match-creator
     restart: on-failure
     depends_on:
       - redis
@@ -36,7 +36,7 @@ services:
     build:
       context: ./games-agent
     container_name: games-agent
-    command: cargo run --release
+    command: games-agent
     restart: on-failure
     depends_on:
       - redis

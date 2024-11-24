@@ -1,6 +1,16 @@
 FROM rust:latest
 
+WORKDIR /usr/
+
+RUN USER=root cargo new --bin connector-api
 WORKDIR /usr/connector-api
-COPY . .
+
+COPY Cargo.toml ./
 
 RUN cargo build --release
+RUN rm src/*.rs
+
+COPY ./src ./src
+
+RUN rm ./target/release/deps/connector_api*
+RUN cargo install --path .
