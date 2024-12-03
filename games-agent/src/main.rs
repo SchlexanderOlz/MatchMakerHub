@@ -1,10 +1,15 @@
-use std::collections::HashMap;
 use futures_lite::StreamExt;
+use gn_ranking_client_rs::RankingClient;
+use lazy_static::lazy_static;
+use models::{CreatedMatch, GameServerCreateRequest, MatchResult};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use gn_matchmaking_state::models::{ActiveMatch, ActiveMatchDB, DBGameServer, GameMode, GameServer};
+use gn_matchmaking_state::models::{
+    ActiveMatch, ActiveMatchDB, DBGameServer, GameMode, GameServer,
+};
 use gn_matchmaking_state::prelude::*;
 use healthcheck::HealthCheck;
 use lapin::options::{
@@ -23,48 +28,11 @@ const HEALTH_CHECK_QUEUE: &str = "health-check";
 const RESULT_MATCH_QUEUE: &str = "match-result";
 
 mod healthcheck;
+mod models;
 
-#[derive(Deserialize, Debug)]
-struct CreatedMatch {
-    pub region: String,
-    pub player_write: HashMap<String, String>,
-    pub game: String,
-    pub mode: GameMode,
-    pub read: String,
-    pub url_pub: String,
-    pub url_priv: String,
-}
-
-#[derive(Deserialize, Debug)]
-struct GameServerCreateRequest {
-    pub region: String,
-    pub game: String,
-    pub mode: GameMode,
-    pub server_pub: String,
-    pub server_priv: String,
-    pub token: String, // Token to authorize as the main-server at this game-server
-}
-
-impl Into<GameServer> for GameServerCreateRequest {
-    fn into(self) -> GameServer {
-        GameServer {
-            region: self.region,
-            game: self.game,
-            mode: self.mode,
-            server_pub: self.server_pub,
-            server_priv: self.server_priv,
-            token: self.token,
-            healthy: true,
-        }
-    }
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct MatchResult {
-    pub match_id: String,
-    pub winner: String,
-    pub points: u8,
-    pub ranked: HashMap<String, u8>,
+lazy_static! {
+    static ref ranking_client: RankingClient =
+        RankingClient::new(std::env::var("RANKING_API_KEY").unwrap().to_owned());
 }
 
 async fn on_match_created(created_match: CreatedMatch, conn: Arc<RedisAdapterDefault>) {
@@ -85,10 +53,7 @@ async fn on_match_created(created_match: CreatedMatch, conn: Arc<RedisAdapterDef
     debug!("Match {:?} inserted", created_match.read);
 }
 
-async fn on_match_result(
-    result: MatchResult,
-    conn: Arc<RedisAdapterDefault>,
-) {
+async fn on_match_result(result: MatchResult, conn: Arc<RedisAdapterDefault>) {
     debug!("Match result: {:?}", result);
     let mut matches = conn.all().unwrap();
     if let Some(match_) = matches.find(|x: &ActiveMatchDB| x.read.clone() == result.match_id) {
@@ -97,22 +62,41 @@ async fn on_match_result(
     }
 }
 
-async fn on_game_created(
+async fn init_game_ranking(
+    created_game: GameServerCreateRequest,
+) -> Result<gn_ranking_client_rs::models::read::Game, Box<dyn std::error::Error>> {
+    debug!("Initializing game at ranking server: {:?}", created_game.game);
+    let game = gn_ranking_client_rs::models::create::Game {
+        game_name: created_game.game.clone(),
+        game_mode: created_game.mode.name.clone(),
+        max_stars: created_game.ranking_conf.max_stars,
+        description: created_game.ranking_conf.description.clone(),
+        performances: created_game
+            .ranking_conf
+            .performances
+            .into_iter()
+            .map(|x| x.into())
+            .collect(),
+    };
+    Ok(ranking_client.game_init(game).await?)
+}
+
+async fn save_game(
     created_game: GameServer,
     conn: Arc<RedisAdapterDefault>,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    info!("Trying to create server: {:?}", created_game);
-    let mut servers = conn.all().unwrap();
+    debug!("Trying to create server: {:?}", created_game);
 
-    if let Some(server) = servers.find(|x: &DBGameServer| {
+    if let Some(server) = conn.all().unwrap().find(|x: &DBGameServer| {
         x.server_pub.clone() == created_game.server_pub.clone()
             && x.game.clone() == created_game.game.clone()
     }) {
         warn!("Tried to create a server that already exists. Creation skipped");
         return Ok(server.uuid);
     }
+
     let server = conn.insert(created_game.clone()).unwrap();
-    info!("Successfully Created server: {:?}", created_game);
+    debug!("Successfully Created server: {:?}", created_game);
     Ok(server)
 }
 
@@ -206,38 +190,43 @@ async fn listen_for_game_created(channel: Arc<Channel>, conn: Arc<RedisAdapterDe
 
     info!("Listening for game created events");
     while let Some(delivery) = consumer.next().await {
-        debug!("Received game created event: {:?}", delivery);
-        let conn = conn.clone();
-        let channel = channel.clone();
-        tokio::spawn(async move {
-            let delivery = delivery.expect("error in consumer");
+        let delivery = delivery.expect("error in consumer");
 
-            let created_game: GameServerCreateRequest =
-                serde_json::from_slice(&delivery.data).unwrap();
-            let game_id = on_game_created(created_game.into(), conn.clone())
-                .await
-                .unwrap();
-
-            let reply_to = delivery.properties.reply_to();
-
-            if let Some(reply_to) = reply_to {
-                channel
-                    .basic_publish(
-                        "",
-                        reply_to.as_str(),
-                        BasicPublishOptions::default(),
-                        game_id.as_bytes(),
-                        BasicProperties::default(),
-                    )
-                    .await
-                    .unwrap();
-                delivery.ack(BasicAckOptions::default()).await.expect("ack");
-            } else {
+        let reply_to = match delivery.properties.reply_to() {
+            Some(reply_to) => reply_to.clone(),
+            None => {
                 delivery
                     .nack(BasicNackOptions::default())
                     .await
                     .expect("nack");
+                continue;
             }
+        };
+        debug!("Received game created event: {:?}", delivery);
+        delivery.ack(BasicAckOptions::default()).await.expect("ack");
+
+        let conn = conn.clone();
+        let channel = channel.clone();
+
+        tokio::spawn(async move {
+            let created_game: GameServerCreateRequest =
+                serde_json::from_slice(&delivery.data).unwrap();
+            let game_id = save_game(created_game.clone().into(), conn.clone())
+                .await
+                .unwrap();
+
+            init_game_ranking(created_game).await.unwrap();
+
+            channel
+                .basic_publish(
+                    "",
+                    reply_to.as_str(),
+                    BasicPublishOptions::default(),
+                    game_id.as_bytes(),
+                    BasicProperties::default(),
+                )
+                .await
+                .unwrap();
         });
     }
 }
@@ -266,11 +255,9 @@ async fn listen_for_healthcheck(channel: Arc<Channel>, conn: Arc<RedisAdapterDef
 
     {
         let healthcheck = healthcheck.clone();
-        tokio::task::spawn_blocking(move || {
-            loop {
-                thread::sleep(Duration::from_secs(1));
-                healthcheck.lock().unwrap().check();               
-            }
+        tokio::task::spawn_blocking(move || loop {
+            thread::sleep(Duration::from_secs(1));
+            healthcheck.lock().unwrap().check();
         });
     }
 
