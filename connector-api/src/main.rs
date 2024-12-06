@@ -122,16 +122,14 @@ mod tests {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let tx = Arc::new(Mutex::new(Some(tx)));
 
-        let on_servers = {
-            move |_, _| {
-                let tx = Arc::clone(&tx);
-                async move {
-                    info!("Server received");
-                    assert!(true);
-                    let _ = tx.lock().unwrap().take().unwrap().send(()).unwrap();
-                }
-                .boxed()
+        let on_servers = move |_, _| {
+            let tx = Arc::clone(&tx);
+            async move {
+                info!("Server received");
+                assert!(true);
+                let _ = tx.lock().unwrap().take().unwrap().send(()).unwrap();
             }
+            .boxed()
         };
 
         let socket = ClientBuilder::new("http://127.0.0.1:4000/")

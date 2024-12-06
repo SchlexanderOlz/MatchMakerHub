@@ -1,6 +1,7 @@
 use std::collections::HashMap;
+use itertools::Itertools;
 
-use gn_matchmaking_state::models::{GameMode, GameServer};
+use gn_matchmaking_state::models::{ActiveMatchDB, GameMode, GameServer};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
@@ -62,10 +63,57 @@ impl Into<GameServer> for GameServerCreateRequest {
     }
 }
 
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct Ranking {
+    pub performances: HashMap<String, Vec<String>>,
+}
+
 #[derive(Deserialize, Debug, Clone)]
 pub struct MatchResult {
     pub match_id: String,
-    pub winner: String,
-    pub points: u8,
-    pub ranked: HashMap<String, u8>,
+    pub winners: HashMap<String, u8>,
+    pub losers: HashMap<String, u8>,
+    pub ranking: Ranking,
+}
+
+pub struct MatchResultMaker(MatchResult, ActiveMatchDB);
+
+impl From<(MatchResult, ActiveMatchDB)> for MatchResultMaker {
+    fn from(x: (MatchResult, ActiveMatchDB)) -> Self {
+        MatchResultMaker(x.0, x.1)
+    }
+}
+
+impl Into<gn_ranking_client_rs::models::create::Match> for MatchResultMaker {
+    fn into(self) -> gn_ranking_client_rs::models::create::Match {
+        let active_match = self.1;
+        let result = self.0;
+
+        gn_ranking_client_rs::models::create::Match {
+        game_name: active_match.game.clone(),
+        game_mode: active_match.mode.name.clone(),
+        player_match_list: result
+            .ranking
+            .performances
+            .into_iter()
+            .map(
+                |(player_id, performances)| gn_ranking_client_rs::models::create::PlayerMatch {
+                    player_id,
+                    player_performances: performances
+                        .into_iter()
+                        .counts()
+                        .into_iter()
+                        .map(
+                            |x| gn_ranking_client_rs::models::create::PlayerPerformance {
+                                name: x.0,
+                                count: x.1 as i32,
+                            },
+                        )
+                        .collect(),
+                },
+            )
+            .collect(),
+    }
+    }
 }

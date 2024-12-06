@@ -1,7 +1,8 @@
 use futures_lite::StreamExt;
 use gn_ranking_client_rs::RankingClient;
+use itertools::Itertools;
 use lazy_static::lazy_static;
-use models::{CreatedMatch, GameServerCreateRequest, MatchResult};
+use models::{CreatedMatch, GameServerCreateRequest, MatchResult, MatchResultMaker};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
@@ -55,17 +56,40 @@ async fn on_match_created(created_match: CreatedMatch, conn: Arc<RedisAdapterDef
 
 async fn on_match_result(result: MatchResult, conn: Arc<RedisAdapterDefault>) {
     debug!("Match result: {:?}", result);
-    let mut matches = conn.all().unwrap();
-    if let Some(match_) = matches.find(|x: &ActiveMatchDB| x.read.clone() == result.match_id) {
+
+    let match_ = conn
+        .all()
+        .unwrap()
+        .find(|x: &ActiveMatchDB| x.read.clone() == result.match_id);
+
+    if let Some(match_) = match_ {
         conn.remove(&match_.uuid).unwrap();
         debug!("Match {:?} removed", match_.uuid);
+        report_match_result(result, match_.clone()).await.unwrap();
+        debug!(
+            "Match {:?} successfully reported to ranking system",
+            match_.uuid
+        );
     }
+}
+
+async fn report_match_result(
+    result: MatchResult,
+    active_match: ActiveMatchDB,
+) -> Result<gn_ranking_client_rs::models::read::Match, Box<dyn std::error::Error>> {
+    let request: gn_ranking_client_rs::models::create::Match =
+        MatchResultMaker::from((result, active_match)).into();
+
+    ranking_client.match_init(request).await
 }
 
 async fn init_game_ranking(
     created_game: GameServerCreateRequest,
 ) -> Result<gn_ranking_client_rs::models::read::Game, Box<dyn std::error::Error>> {
-    debug!("Initializing game at ranking server: {:?}", created_game.game);
+    debug!(
+        "Initializing game at ranking server: {:?}",
+        created_game.game
+    );
     let game = gn_ranking_client_rs::models::create::Game {
         game_name: created_game.game.clone(),
         game_mode: created_game.mode.name.clone(),
