@@ -55,6 +55,7 @@ services:
       - AMQP_URL=${AMQP_URL}
       - RANKING_URL=${RANKING_URL}
       - RANKING_API_KEY=${RANKING_API_KEY}
+      - DEBUG=1
     networks:
       - game-night-network
 

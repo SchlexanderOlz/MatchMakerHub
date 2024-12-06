@@ -20,7 +20,7 @@ use lapin::options::{
 use lapin::types::FieldTable;
 use lapin::{BasicProperties, Channel, Connection};
 use serde::Deserialize;
-use tracing::{debug, info, warn, Level};
+use tracing::{debug, error, info, warn, Level};
 use tracing_subscriber::FmtSubscriber;
 
 const CREATE_MATCH_QUEUE: &str = "match-created";
@@ -65,7 +65,11 @@ async fn on_match_result(result: MatchResult, conn: Arc<RedisAdapterDefault>) {
     if let Some(match_) = match_ {
         conn.remove(&match_.uuid).unwrap();
         debug!("Match {:?} removed", match_.uuid);
-        report_match_result(result, match_.clone()).await.unwrap();
+        if let Err(err) = report_match_result(result.clone(), match_.clone()).await {
+            error!("Error reporting match result: {:?}", err);
+            return;
+        }
+
         debug!(
             "Match {:?} successfully reported to ranking system",
             match_.uuid
@@ -239,7 +243,9 @@ async fn listen_for_game_created(channel: Arc<Channel>, conn: Arc<RedisAdapterDe
                 .await
                 .unwrap();
 
-            init_game_ranking(created_game).await.unwrap();
+            if let Err(err) = init_game_ranking(created_game).await {
+                error!("Error initializing game at ranking server: {:?}", err);
+            }
 
             channel
                 .basic_publish(
