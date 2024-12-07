@@ -5,7 +5,8 @@ use lapin::{
 };
 use reqwest;
 use std::{collections::HashMap, sync::Arc};
-use tracing::{debug, info, Level};
+use tokio::runtime::Runtime;
+use tracing::{debug, info, warn, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use gn_matchmaking_state::models::{ActiveMatch, DBSearcher, Match};
@@ -25,7 +26,7 @@ struct NewMatch {
 
 const CREATE_QUEUE: &str = "match-create-request";
 
-async fn handle_match(new_match: Match, channel: &Channel, conn: Arc<RedisAdapterDefault>) {
+fn handle_match(new_match: Match, channel: &Channel, conn: Arc<RedisAdapterDefault>) -> NewMatch {
     debug!("Matched players: {:?}", new_match);
 
     // TODO: Write the logic for the pool to look up the existence of the game (If needed. Else remove the pool)
@@ -39,37 +40,22 @@ async fn handle_match(new_match: Match, channel: &Channel, conn: Arc<RedisAdapte
             Ok(player) => {
                 let player: DBSearcher = player;
                 player.player_id
-            },
-            Err(_) => {
+            }
+            Err(err) => {
+                warn!("Player not found: {}", err);
                 ai_players.push(player_id.clone());
                 player_id
             }
         })
         .collect();
 
-    let create_match = NewMatch {
+    NewMatch {
         game: new_match.game,
         players,
         ai_players,
         mode: new_match.mode.clone().into(),
         ai: new_match.ai,
-    };
-
-    info!(
-        "Requesting creation of match on server: {}",
-        new_match.region
-    );
-
-    channel
-        .basic_publish(
-            "",
-            CREATE_QUEUE,
-            BasicPublishOptions::default(),
-            &serde_json::to_vec(&create_match).unwrap(),
-            BasicProperties::default(),
-        )
-        .await
-        .unwrap();
+    }
 }
 
 #[tokio::main]
@@ -107,8 +93,20 @@ async fn main() {
         let create_channel = create_channel.clone();
 
         let connector = connector.clone();
-        let _ = tokio::spawn(async move {
-            handle_match(new_match, &create_channel, connector.clone()).await;
+
+        let created_match = handle_match(new_match, &create_channel, connector.clone());
+
+        tokio::spawn(async move {
+            create_channel
+                .basic_publish(
+                    "",
+                    CREATE_QUEUE,
+                    BasicPublishOptions::default(),
+                    &serde_json::to_vec(&created_match).unwrap(),
+                    BasicProperties::default(),
+                )
+                .await
+                .unwrap();
         });
     });
     info!("On match handler registered");

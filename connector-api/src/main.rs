@@ -1,9 +1,11 @@
 use std::sync::{Arc, Mutex};
 
-use gn_matchmaking_state::models::DBSearcher;
+use gn_matchmaking_state::models::{DBSearcher, HostRequestDB};
 use gn_matchmaking_state::prelude::*;
 use handler::Handler;
-use models::{DirectConnect, Host, Search};
+use match_maker::MatchMaker;
+use models::{DirectConnect, Host, HostInfo, Search};
+use rand::rngs::adapter;
 use socketioxide::{
     extract::{Data, SocketRef},
     SocketIo,
@@ -22,54 +24,90 @@ mod models;
 
 static DEFAULT_HOST_ADDRESS: &str = "0.0.0.0:4000";
 
-fn setup_listeners(io: &SocketIo, adapter: Arc<RedisAdapterDefault>, ranking_client: Arc<gn_ranking_client_rs::RankingClient>) {
+fn setup_listeners(
+    io: &SocketIo,
+    adapter: Arc<RedisAdapterDefault>,
+    ranking_client: Arc<gn_ranking_client_rs::RankingClient>,
+) {
     let match_maker = match_maker::MatchMaker::new(adapter.clone());
     let adapter_clone = adapter.clone();
-    let on_match_search = move |socket: SocketRef| {
-        info!("Socket.IO connected: {:?} {:?}", socket.ns(), socket.id);
-        let handler = Arc::new(Handler::new(adapter_clone.clone(), ranking_client));
 
-        let search_handler = handler.clone();
-        socket.on(
-            "search",
-            move |socket: SocketRef, Data::<Search>(data)| async move {
-                debug!("Search event received: {:?}", data);
-                if let Err(err) = search_handler.handle_search(&socket, data).await {
-                    socket.emit("error", &err.to_string()).ok();
-                    return;
+    let on_match_search = {
+        move |socket: SocketRef| {
+            info!("Socket.IO connected: {:?} {:?}", socket.ns(), socket.id);
+            let handler = Arc::new(Handler::new(adapter_clone.clone(), ranking_client));
+
+            let notify_on_match = {
+                let handler = handler.clone();
+                let socket = socket.clone();
+                move || {
+                    match_maker.lock().unwrap().notify_on_match(
+                        &handler.get_user_id().unwrap(),
+                        move |r#match| {
+                            debug!("Match found: {:?}", r#match);
+                            handler.notify_match_found(&socket, r#match);
+                            debug!("Match found event emitted");
+                        },
+                    );
                 }
+            };
 
-                let uuid = search_handler.get_searcher_id().unwrap();
-                let instance: DBSearcher = adapter.get(&uuid).unwrap();
+            socket.on("search", {
+                let handler = handler.clone();
+                let init_notify_on_match = notify_on_match.clone();
+                move |socket: SocketRef, Data::<Search>(data)| async move {
+                    debug!("Search event received: {:?}", data);
+                    if let Err(err) = handler.handle_search(data).await {
+                        socket.emit("error", &err.to_string()).ok();
+                        return;
+                    }
 
-                match_maker
-                    .lock()
-                    .unwrap()
-                    .notify_on_match(&instance.player_id, move |r#match| {
-                        debug!("Match found: {:?}", r#match);
-                        search_handler.notify_match_found(&socket, r#match);
-                        debug!("Match found event emitted");
-                    });
-            },
-        );
+                    init_notify_on_match();
+                }
+            });
 
-        let disconnect_handler = handler.clone();
-        socket.on_disconnect(move |socket: SocketRef| {
-            info!("Socket.IO disconnected: {:?}", socket.id);
-            disconnect_handler.handle_disconnect(&socket);
-        });
+            let disconnect_handler = handler.clone();
+            socket.on_disconnect(move |socket: SocketRef| {
+                info!("Socket.IO disconnected: {:?}", socket.id);
+                disconnect_handler.handle_disconnect();
+            });
 
-        let host_handler = handler.clone();
-        socket.on("host", move |socket: SocketRef, Data::<Host>(data)| {
-            host_handler.handle_host(&socket, data)
-        });
-        let join_handler = handler.clone();
-        socket.on(
-            "join",
-            move |socket: SocketRef, Data::<DirectConnect>(data)| {
-                join_handler.handle_join(&socket, data)
-            },
-        );
+            let host_handler = handler.clone();
+            socket.on("host", {
+                let init_notify_on_match = notify_on_match.clone();
+                move |socket: SocketRef, Data::<Host>(data)| async move {
+                    if let Err(err) = host_handler.handle_host(data).await {
+                        socket.emit("error", &err.to_string()).ok();
+                        return;
+                    }
+
+                    let host_info = HostInfo {
+                        host_id: host_handler.get_searcher_id().unwrap(),
+                    };
+                    init_notify_on_match();
+                    socket.emit("host_info", &host_info).ok();
+                }
+            });
+
+            let host_handler = handler.clone();
+            socket.on("start", move |socket: SocketRef| async move {
+                if let Err(err) = host_handler.handle_start().await {
+                    socket.emit("error", &err.to_string()).ok();
+                };
+            });
+
+            let join_handler = handler.clone();
+            socket.on("join", {
+                let init_notify_on_match = notify_on_match.clone();
+                move |socket: SocketRef, Data::<DirectConnect>(data)| async move {
+                    if let Err(err) = join_handler.handle_join(data).await {
+                        socket.emit("error", &err.to_string()).ok();
+                        return;
+                    }
+                    init_notify_on_match();
+                }
+            });
+        }
     };
 
     io.ns("/match", on_match_search);

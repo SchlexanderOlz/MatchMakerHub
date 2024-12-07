@@ -2,18 +2,18 @@ import redis
 import time
 import os 
 
-REDIS_HOST = os.getenv('SCRIPT_DIR')
-with open(REDIS_HOST, 'r') as file:
-    lua_script = file.read()
+SEARCHERS_SCRIPT_DIR = os.getenv('SEARCHERS_SCRIPT_DIR')
+with open(SEARCHERS_SCRIPT_DIR, 'r') as file:
+    searchers_lua_script = file.read()
 
 r = redis.StrictRedis(host=os.getenv('REDIS_HOST'), port=int(os.getenv('REDIS_PORT')), db=0)
 
-script_sha = r.script_load(lua_script)
+searchers_script_sha = r.script_load(searchers_lua_script)
 
 while True:
     start_time = time.time()
     
-    r.evalsha(script_sha, 0)
+    r.evalsha(searchers_script_sha, 0)
     elapsed_time = time.time() - start_time
     
     time.sleep(max(0, 1 - elapsed_time))

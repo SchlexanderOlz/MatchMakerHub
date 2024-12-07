@@ -9,11 +9,11 @@ local function can_play_together(players)
     for i = 1, #players do
         local player = players[i]
 
-        if tonumber(redis.call('GET', player .. ':matching')) then
+        if tonumber(redis.call('GET', player .. ':matching')) == 1 then
             return false
         end
 
-        if tonumber(redis.call('GET', player .. ':ai')) then
+        if tonumber(redis.call('GET', player .. ':ai')) == 1 then
             return false
         end
 
@@ -25,11 +25,11 @@ local function can_play_together(players)
         for j = i + 1, #players do
             local other = players[j]
 
-            if tonumber(redis.call('GET', other .. ':matching')) then
+            if tonumber(redis.call('GET', other .. ':matching')) == 1 then
                 return false
             end
 
-            if tonumber(redis.call('GET', other .. ':ai')) then
+            if tonumber(redis.call('GET', other .. ':ai')) == 1 then
                 return false
             end
 
@@ -55,18 +55,28 @@ local function can_play_together(players)
 end
 
 
-local function handle_match(region, players)
+local function publish_new_match(region, player_ids, mode, game, ai)
     local uuid = redis.call('INCR', 'uuid_inc')
 
     redis.call('PUBLISH', uuid .. ':match:region', region)
-    for y, other in ipairs(players) do
+    for y, other in ipairs(player_ids) do
         redis.call('SET', other .. ':matching', 1)
 
         redis.call('PUBLISH', uuid .. ':match:players:' .. tostring(y), other)
     end
 
-    redis.call('PUBLISH', uuid .. ':match:done', #players)
+    redis.call('PUBLISH', uuid .. ':match:mode', mode)
+    redis.call('PUBLISH', uuid .. ':match:game', game)
+    redis.call('PUBLISH', uuid .. ':match:ai', ai)
+
+    redis.call('PUBLISH', uuid .. ':match:done', #player_ids)
 end
+
+
+local function handle_match(region, players)
+    publish_new_match(region, players, redis.call('GET', players[1] .. ':mode'), redis.call('GET', players[1] .. ':game'), redis.call('GET', players[1] .. ':ai'))
+end
+
 
 local function fill_with_ai(players, max_player_count)
     for j = #players + 1, max_player_count do
@@ -78,13 +88,14 @@ local function fill_with_ai(players, max_player_count)
 end
 
 local function check_for_ai_search(player)
-    if tonumber(redis.call('GET', player .. ':matching')) then
+    if tonumber(redis.call('GET', player .. ':matching')) == 1 then
         return false
     end
 
     if tonumber(redis.call('GET', player .. ':ai')) == 0 then
         return false
     end
+
 
 
     local players = { player }
@@ -126,13 +137,13 @@ for i = 1, #searcher_keys do
     if #players >= min_player_count then
         handle_match(region, players)
     else
-        if tonumber(redis.call('INCR', player1 .. ':failed_searches')) == 10 then
-            redis.call('SET', player1 .. ':fill_with_ai', 0)
+        if tonumber(redis.call('INCR', player1 .. ':failed_searches')) > 10 then
+            redis.call('SET', player1 .. ':fill_with_ai', 1)
 
             local all_fill_with_ai = true
 
             for _, player in ipairs(players) do
-                if not redis.call('GET', player .. ':fill_with_ai') then
+                if tonumber(redis.call('GET', player .. ':fill_with_ai')) == 0 then
                     all_fill_with_ai = false
                     break
                 end
@@ -148,4 +159,44 @@ for i = 1, #searcher_keys do
             end
         end
     end
+end
+
+-- Check for hosts
+
+searcher_keys = redis.call('KEYS', '*:host_requests')
+
+local function check_for_start(searcher)
+    if tonumber(redis.call('GET', searcher .. ':matching')) then
+        return false
+    end
+
+    if tonumber(redis.call('GET', searcher .. ':start_requested')) == 0 then
+        return false
+    end
+
+    redis.call('SET', searcher .. ':matching', 1)
+
+    local player_keys = redis.call('KEYS', searcher .. ':joined_players:*')
+
+    local players = {}
+
+    for i = 1, #player_keys do
+        local player_key = player_keys[i]
+        local player = redis.call('GET', player_key)
+
+        table.insert(players, player)
+    end
+
+    local region = redis.call('GET', searcher .. ':region')
+
+
+    publish_new_match(region, players, redis.call('GET', searcher .. ':mode'), redis.call('GET', searcher .. ':game'), 0)
+
+end
+
+
+for i = 1, #searcher_keys do
+    local searcher = searcher_keys[i]
+
+    check_for_start(searcher)
 end

@@ -19,17 +19,19 @@ pub struct Search {
     pub ai: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct Host {
-    pub player_id: String,
-    pub invite_players: Vec<String>,
+    pub session_token: String,
+    pub region: String,
     pub game: String,
-    pub config: Value,
+    pub mode: String,
+    pub reserved_players: Vec<String>,
 }
 
 #[derive(Deserialize)]
 pub struct DirectConnect {
-    pub write_key: String,
+    pub session_token: String,
+    pub host_id: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -43,7 +45,7 @@ pub struct Match {
 
 
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct EZAUTHValidationResponse {
     pub _id: String,
     pub username: String,
@@ -51,4 +53,9 @@ pub struct EZAUTHValidationResponse {
 
     #[serde(rename = "createdAt")]
     pub created_at: String
+}
+
+#[derive(Serialize)]
+pub struct HostInfo {
+    pub host_id: String,
 }

@@ -1,6 +1,5 @@
 use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
+    collections::HashMap, future::Future, sync::{Arc, Mutex}
 };
 
 use crate::models::{DBSearcher, Match};
@@ -15,6 +14,23 @@ use tracing::{error, info};
 mod io;
 pub mod publisher;
 
+#[derive(Default, Debug)]
+pub struct MatchProposal {
+    pub found_region: Option<String>,
+    pub found_mode: Option<String>,
+    pub found_game: Option<String>,
+    pub found_players: HashMap<String, Vec<String>>,
+    pub found_ai: Option<bool>,
+}
+
+impl MatchProposal {
+    #[inline]
+    pub fn is_complete(&self) -> bool {
+        return !self.found_players.is_empty()
+            && self.found_region.is_some()
+            && self.found_ai.is_some();
+    }
+}
 
 pub type RedisAdapterDefault = RedisAdapter<redis::Connection>;
 
@@ -117,23 +133,17 @@ where
     }
 
     fn acc_searchers(mut self, mut connection: PubSub) -> Result<(), Box<dyn std::error::Error>> {
-        let mut found_regions: HashMap<String, String> = HashMap::new();
-        let mut found_players: HashMap<String, Vec<String>> = HashMap::new();
+        let mut match_proposal = MatchProposal::default();
 
         // TODO: Multithread this as soon as the problem with the order of messages is fixed.
         loop {
             let msg = connection.get_message().unwrap();
             info!("Message received: {:?}", msg);
-            self.handle_msg(msg, &mut found_regions, &mut found_players);
+            self.handle_msg(msg, &mut match_proposal);
         }
     }
 
-    fn handle_msg(
-        &mut self,
-        msg: Msg,
-        found_regions: &mut HashMap<String, String>,
-        found_players: &mut HashMap<String, Vec<String>>,
-    ) {
+    fn handle_msg(&mut self, msg: Msg, match_proposal: &mut MatchProposal) {
         let payload = msg.get_payload::<String>().unwrap();
 
         info!("Payload: {:?}", payload);
@@ -144,23 +154,39 @@ where
         let uuid = channel.first().unwrap().to_string();
 
         if last.to_string() == "region".to_string() {
-            found_regions.insert(channel.first().unwrap().to_string(), payload);
+            match_proposal.found_region = Some(payload);
+            return;
+        }
+
+        if last.to_string() == "mode".to_string() {
+            match_proposal.found_mode = Some(payload);
+            return;
+        }
+
+        if last.to_string() == "game".to_string() {
+            match_proposal.found_game = Some(payload);
+            return;
+        }
+
+        if last.to_string() == "ai".to_string() {
+            match_proposal.found_ai = Some(payload.parse::<i32>().unwrap() == 1);
             return;
         }
 
         if last.to_string() == "done".to_string() {
-            self.on_done_msg(&uuid, payload, &found_regions, &found_players)
-                .unwrap();
+            self.on_done_msg(&uuid, payload, &match_proposal).unwrap();
             // TODO: The order of messages is likely but not guaranteed. This could be a potential error and should be handled accordingly.
             return;
         }
 
         if channel.get(channel.len() - 2).unwrap().to_string() == "players".to_string() {
-            if let Some(players) = found_players.get_mut(&uuid) {
+            if let Some(players) = match_proposal.found_players.get_mut(&uuid) {
                 players.push(payload);
                 return;
             }
-            found_players.insert(channel.first().unwrap().to_string(), vec![payload]);
+            match_proposal
+                .found_players
+                .insert(channel.first().unwrap().to_string(), vec![payload]);
         }
     }
 
@@ -168,16 +194,15 @@ where
         &mut self,
         uuid: &String,
         payload: String,
-        found_regions: &HashMap<String, String>,
-        found_players: &HashMap<String, Vec<String>>,
+        match_proposal: &MatchProposal,
     ) -> Result<tokio::task::JoinHandle<()>, Box<dyn std::error::Error>> {
-        let region = found_regions.get(uuid);
+        let region = match_proposal.found_region.as_ref();
         if region.is_none() {
             todo!("Handle the server error accordingly");
         }
         let region = region.unwrap().clone();
 
-        let players = found_players.get(uuid);
+        let players = match_proposal.found_players.get(uuid);
         if players.is_none() || players.unwrap().len() == 0 {
             todo!("Handle the player error accordingly");
         }
@@ -186,14 +211,12 @@ where
             todo!("Handle the player count error accordingly");
         }
 
-        let example_searcher: DBSearcher = self.get(players.get(0).unwrap())?;
-
         let new_match = Match {
             region,
             players: players.clone(),
-            mode: example_searcher.mode,
-            game: example_searcher.game,
-            ai: example_searcher.ai,
+            mode: match_proposal.found_mode.as_ref().unwrap().clone(),
+            game: match_proposal.found_game.as_ref().unwrap().clone(),
+            ai: match_proposal.found_ai.unwrap(),
         };
 
         let handles: Vec<_> = self
@@ -218,7 +241,9 @@ where
             }
 
             players.iter().for_each(|player| {
-                if let Err(err) = self_clone.remove(player) {
+                if let Err(err) =
+                    self_clone.remove(&player.splitn(3, ":").take(2).collect::<Vec<_>>().join(":"))
+                {
                     error!("Error removing player 'uuid: {}': {}", player, err);
                 }
             });
@@ -233,8 +258,6 @@ pub trait RedisFilter<T> {
 pub trait RedisUpdater<T> {
     fn update(&self, pipe: &mut Pipeline, uuid: &str) -> Result<(), Box<dyn std::error::Error>>;
 }
-
-
 
 pub trait RedisIdentifiable {
     fn name() -> String;

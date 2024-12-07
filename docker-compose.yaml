@@ -61,7 +61,7 @@ services:
     networks:
       - game-night-network
     environment:
-      - SCRIPT_DIR=/usr/src/automate/scripts/matches.lua
+      - SEARCHERS_SCRIPT_DIR=/usr/src/automate/scripts/searchers.lua
       - REDIS_HOST=redis
       - REDIS_PORT=6379
 

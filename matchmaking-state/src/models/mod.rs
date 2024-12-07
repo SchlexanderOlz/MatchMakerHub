@@ -1,6 +1,8 @@
 use std::{collections::HashMap, time::SystemTime};
 
-use gn_redisadapter_derive::{RedisIdentifiable, RedisInsertWriter, RedisOutputReader, RedisUpdater};
+use gn_redisadapter_derive::{
+    RedisIdentifiable, RedisInsertWriter, RedisOutputReader, RedisUpdater,
+};
 use serde::Deserialize;
 
 #[cfg(feature = "redis")]
@@ -76,7 +78,60 @@ impl RedisFilter<DBGameServer> for GameServerFilter {
     }
 }
 
+#[derive(Debug, Clone)]
+#[cfg_attr(
+    feature = "redis",
+    derive(RedisInsertWriter, RedisIdentifiable),
+    name("host_requests")
+)]
+pub struct HostRequest {
+    pub player_id: String,
+    pub mode: String,
+    pub game: String,
+    pub region: String,
+    pub reserved_players: Vec<String>,
+    pub joined_players: Vec<String>,
+    pub start_requested: bool,
+    pub min_players: u32,
+    pub max_players: u32,
+    pub wait_start: SystemTime,
+}
 
+#[derive(Debug, Clone)]
+#[cfg_attr(
+    feature = "redis",
+    derive(RedisOutputReader, RedisIdentifiable),
+    name("host_requests")
+)]
+pub struct HostRequestDB {
+    #[cfg_attr(feature = "redis", uuid)]
+    pub uuid: String,
+    pub player_id: String,
+    pub mode: String,
+    pub game: String,
+    pub region: String,
+    pub reserved_players: Vec<String>,
+    pub joined_players: Vec<String>,
+    pub start_requested: bool,
+    pub min_players: u32,
+    pub max_players: u32,
+    pub wait_start: SystemTime,
+}
+
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "redis", derive(RedisUpdater), name("host_requests"))]
+pub struct HostRequestUpdate {
+    pub player_id: Option<String>,
+    pub mode: Option<String>,
+    pub game: Option<String>,
+    pub region: Option<String>,
+    pub reserved_players: Option<Vec<String>>,
+    pub joined_players: Option<Vec<String>>,
+    pub start_requested: Option<bool>,
+    pub min_players: Option<u32>,
+    pub max_players: Option<u32>,
+    pub wait_start: Option<SystemTime>,
+}
 #[derive(Debug, Clone)]
 #[cfg_attr(
     feature = "redis",
@@ -156,7 +211,11 @@ pub struct SearcherMatchConfig {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "redis", derive(RedisInsertWriter, RedisIdentifiable), name("active_matches"))]
+#[cfg_attr(
+    feature = "redis",
+    derive(RedisInsertWriter, RedisIdentifiable),
+    name("active_matches")
+)]
 pub struct ActiveMatch {
     pub game: String,
     pub mode: String,
@@ -169,7 +228,11 @@ pub struct ActiveMatch {
 }
 
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "redis", derive(RedisOutputReader, RedisIdentifiable), name("active_matches"))]
+#[cfg_attr(
+    feature = "redis",
+    derive(RedisOutputReader, RedisIdentifiable),
+    name("active_matches")
+)]
 pub struct ActiveMatchDB {
     #[uuid]
     pub uuid: String,

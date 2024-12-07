@@ -5,7 +5,7 @@ use uuid::Uuid;
 use rand::{distributions::Alphanumeric, Rng};
 
 
-use crate::models::EZAUTHValidationResponse;
+pub use crate::models::EZAUTHValidationResponse;
 
 pub async fn validate_user(session_token: &str, ezauth_url: &str) -> Result<EZAUTHValidationResponse, Box<dyn std::error::Error>> {
     #[cfg(disable_auth)]
