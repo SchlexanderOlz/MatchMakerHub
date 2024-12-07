@@ -19,6 +19,8 @@ pub struct GameServer {
     pub server_pub: String,
     pub server_priv: String,
     pub healthy: bool,
+    pub min_players: u32,
+    pub max_players: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -36,6 +38,8 @@ pub struct DBGameServer {
     pub server_pub: String,
     pub server_priv: String,
     pub healthy: bool,
+    pub min_players: u32,
+    pub max_players: u32,
 }
 
 impl PartialEq for DBGameServer {
@@ -53,6 +57,8 @@ pub struct GameServerUpdater {
     pub server_pub: Option<String>,
     pub server_priv: Option<String>,
     pub healthy: Option<bool>,
+    pub min_players: Option<u32>,
+    pub max_players: Option<u32>,
 }
 
 #[derive(Debug, Default)]
@@ -84,6 +90,8 @@ pub struct Searcher {
     pub ai: bool,
     pub game: String,
     pub region: String,
+    pub min_players: u32,
+    pub max_players: u32,
     pub wait_start: SystemTime,
 }
 
@@ -114,6 +122,8 @@ pub struct DBSearcher {
     pub ai: bool,
     pub game: String,
     pub region: String,
+    pub min_players: u32,
+    pub max_players: u32,
     pub wait_start: SystemTime,
 }
 

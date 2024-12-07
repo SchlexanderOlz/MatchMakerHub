@@ -27,6 +27,7 @@ const CREATE_MATCH_QUEUE: &str = "match-created";
 const CREATE_GAME_QUEUE: &str = "game-created";
 const HEALTH_CHECK_QUEUE: &str = "health-check";
 const RESULT_MATCH_QUEUE: &str = "match-result";
+const AI_QUEUE: &str = "ai-task-generate-request";
 
 mod healthcheck;
 mod models;
@@ -36,23 +37,41 @@ lazy_static! {
         RankingClient::new(std::env::var("RANKING_API_KEY").unwrap().to_owned());
 }
 
-async fn on_match_created(created_match: CreatedMatch, conn: Arc<RedisAdapterDefault>) {
+async fn on_match_created(created_match: CreatedMatch, conn: Arc<RedisAdapterDefault>, channel: Arc<Channel>) {
     debug!("Match created: {:?}", created_match);
 
     let insert = ActiveMatch {
         region: created_match.region,
-        game: created_match.game,
-        mode: created_match.mode,
+        game: created_match.game.clone(),
+        mode: created_match.mode.clone(),
         ai: created_match.ai,
-        server_pub: created_match.url_pub,
-        server_priv: created_match.url_priv,
+        server_pub: created_match.url_pub.clone(),
+        server_priv: created_match.url_priv.clone(),
         read: created_match.read.clone(),
-        player_write: created_match.player_write,
+        player_write: created_match.player_write.clone(),
     };
 
     debug!("Inserting match {:?} into State", created_match.read);
     conn.insert(insert).unwrap();
-    debug!("Match {:?} inserted", created_match.read);
+    debug!("Match {:?} inserted", created_match.read.clone());
+
+    if created_match.ai {
+        for player in created_match.ai_players {
+            let task = models::Task {
+                ai_level: 1,
+                game: created_match.game.clone(),
+                mode: created_match.mode.clone(),
+                address: created_match.url_priv.clone(),
+                read: created_match.read.clone(),
+                write: created_match.player_write.get(&player).unwrap().clone(),
+                players: created_match.player_write.keys().map(|x| x.clone()).collect(),
+            };
+
+            channel.basic_publish("", AI_QUEUE, BasicPublishOptions::default(), serde_json::to_vec(&task).unwrap().as_slice(), BasicProperties::default()).await.unwrap();
+        };
+        debug!("AI tasks created for match {:?}", created_match.read);
+    }
+
 }
 
 async fn on_match_result(result: MatchResult, conn: Arc<RedisAdapterDefault>) {
@@ -173,6 +192,8 @@ async fn listen_for_match_created(channel: Arc<Channel>, conn: Arc<RedisAdapterD
         .await
         .unwrap();
 
+    channel.queue_declare(AI_QUEUE, QueueDeclareOptions::default(), FieldTable::default()).await.unwrap();
+
     let mut consumer = channel
         .basic_consume(
             CREATE_MATCH_QUEUE,
@@ -187,12 +208,13 @@ async fn listen_for_match_created(channel: Arc<Channel>, conn: Arc<RedisAdapterD
     while let Some(delivery) = consumer.next().await {
         debug!("Received match created event: {:?}", delivery);
         let conn = conn.clone();
+        let channel = channel.clone();
         tokio::spawn(async move {
             let delivery = delivery.expect("error in consumer");
             delivery.ack(BasicAckOptions::default()).await.expect("ack");
 
             let created_match: CreatedMatch = serde_json::from_slice(&delivery.data).unwrap();
-            on_match_created(created_match, conn.clone()).await;
+            on_match_created(created_match, conn.clone(), channel).await;
         });
     }
 }

@@ -31,6 +31,8 @@ mod tests {
             server_pub: "127.0.0.1:3456".to_owned(),
             server_priv: "127.0.0.1:3456".to_owned(),
             healthy: true,
+            min_players: 2,
+            max_players: 2,
         };
         adapter.insert(game_server).unwrap();
     }
@@ -55,6 +57,8 @@ mod tests {
             server_pub: "127.0.0.1:3456".to_owned(),
             server_priv: "127.0.0.1:3456".to_owned(),
             healthy: true,
+            min_players: 2,
+            max_players: 2,
         };
         adapter.insert(game_server.clone()).unwrap();
 
@@ -86,6 +90,8 @@ mod tests {
             server_pub: "127.0.0.1:3456".to_owned(),
             server_priv: "127.0.0.1:3456".to_owned(),
             healthy: true,
+            min_players: 2,
+            max_players: 2,
         };
         let uuid = adapter.insert(game_server.clone()).unwrap();
 
@@ -114,6 +120,8 @@ mod tests {
             server_pub: "127.0.0.1:3456".to_owned(),
             server_priv: "127.0.0.1:3456".to_owned(),
             healthy: true,
+            min_players: 2,
+            max_players: 2,
         };
         let uuid = adapter.insert(game_server.clone()).unwrap();
 

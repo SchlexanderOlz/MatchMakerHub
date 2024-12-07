@@ -51,7 +51,7 @@ impl Handler {
         debug!("Received Search event: {:?}", data);
         let validation = ezauth::validate_user(&data.session_token, &self.ezauth_url).await?;
 
-        let servers: Vec<String> = self
+        let servers: Vec<_> = self
             .state
             .all()
             .unwrap()
@@ -61,7 +61,6 @@ impl Handler {
                     && server.mode == data.mode
                     && server.region == data.region
             })
-            .map(|server| server.server_pub)
             .collect();
 
         debug!("Servers found for search ({:?}): {:?}", data, servers);
@@ -90,6 +89,7 @@ impl Handler {
             return Ok(());
         }
 
+        let sample_server = servers.first().unwrap();
         let searcher = Searcher {
             player_id: validation._id.clone(),
             elo,
@@ -97,6 +97,8 @@ impl Handler {
             mode: search.mode.clone(),
             ai: search.ai,
             region: search.region.clone(),
+            min_players: sample_server.min_players,
+            max_players: sample_server.max_players,
             wait_start: SystemTime::now(),
         };
         let uuid = self.state.insert(searcher).unwrap();
