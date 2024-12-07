@@ -1,6 +1,6 @@
 use gn_matchmaking_state::{
     adapters::{redis::RedisAdapterDefault, Gettable, Insertable, Removable},
-    models::{DBGameServer, DBSearcher, GameMode, Searcher},
+    models::{DBGameServer, DBSearcher, Searcher},
 };
 use std::{
     sync::{Arc, Mutex},
@@ -21,10 +21,11 @@ pub struct Handler {
     state: Arc<RedisAdapterDefault>,
     search_id: Mutex<Option<String>>,
     ezauth_url: String,
+    ranking_client: Arc<gn_ranking_client_rs::RankingClient>,
 }
 
 impl Handler {
-    pub fn new(state: Arc<RedisAdapterDefault>) -> Self {
+    pub fn new(state: Arc<RedisAdapterDefault>, ranking_client: Arc<gn_ranking_client_rs::RankingClient>) -> Self {
         let ezauth_url = std::env::var("EZAUTH_URL").unwrap();
         let ezauth_url = ezauth_url.to_string();
 
@@ -33,6 +34,7 @@ impl Handler {
             state,
             search_id: Mutex::new(None),
             ezauth_url,
+            ranking_client
         }
     }
 
@@ -54,14 +56,9 @@ impl Handler {
             .all()
             .unwrap()
             .filter(|server: &DBGameServer| {
-                let game_mode = GameMode {
-                    name: data.mode.name.clone(),
-                    player_count: data.mode.player_count,
-                    computer_lobby: data.mode.computer_lobby,
-                };
                 server.healthy
                     && server.game == data.game
-                    && server.mode == game_mode
+                    && server.mode == data.mode
                     && server.region == data.region
             })
             .map(|server| server.server_pub)
@@ -74,7 +71,11 @@ impl Handler {
         }
         // TODO: Throw some error and return it to the client if the selected game_mode is not valid. Ask the game-servers for validity. Rethink the saving the GameModes in the DB approach
 
-        let elo = 42; // TODO: Get real elo from leitner
+        #[cfg(disable_elo)]
+        let elo = 42;
+        #[cfg(not(disable_elo))]
+        let elo = self.ranking_client.player_stars(&validation._id).await?;
+
 
         let search = data;
 
@@ -93,11 +94,8 @@ impl Handler {
             player_id: validation._id.clone(),
             elo,
             game: search.game.clone(),
-            mode: GameMode {
-                name: search.mode.name.clone(),
-                player_count: search.mode.player_count,
-                computer_lobby: search.mode.computer_lobby,
-            },
+            mode: search.mode.clone(),
+            ai: search.ai,
             region: search.region.clone(),
             wait_start: SystemTime::now(),
         };

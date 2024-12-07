@@ -10,28 +10,13 @@ use gn_matchmaking_state::{
 use gn_matchmaking_state::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize)]
-struct GameMode {
-    pub name: String,
-    pub player_count: u32,
-    pub computer_lobby: bool,
-}
-
-impl From<gn_matchmaking_state::models::GameMode> for GameMode {
-    fn from(value: gn_matchmaking_state::models::GameMode) -> Self {
-        Self {
-            name: value.name,
-            player_count: value.player_count,
-            computer_lobby: value.computer_lobby,
-        }
-    }
-}
 
 #[derive(Serialize)]
 struct NewMatch {
     pub game: String,
     pub players: Vec<String>,
-    pub mode: GameMode,
+    pub mode: String,
+    pub ai: bool
 }
 
 
@@ -55,6 +40,7 @@ async fn handle_match(new_match: Match, channel: &Channel, conn: Arc<RedisAdapte
             })
             .collect(),
         mode: new_match.mode.clone().into(),
+        ai: new_match.ai,
     };
 
     info!(

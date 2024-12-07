@@ -27,3 +27,6 @@ opt-level = 3
 
 [build-dependencies]
 dotenv = "0.15"
+
+[patch.crates-io]
+gn-matchmaking-state = { path = "../matchmaking-state" }

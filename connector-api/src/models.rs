@@ -15,7 +15,8 @@ pub struct Search {
     pub region: String,
     pub session_token: String,
     pub game: String,
-    pub mode: GameMode,
+    pub mode: String,
+    pub ai: bool,
 }
 
 #[derive(Deserialize)]

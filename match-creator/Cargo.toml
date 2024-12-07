@@ -20,3 +20,6 @@ default = []
 
 [profile.release]
 opt-level = 3
+
+[patch.crates-io]
+gn-matchmaking-state = { path = "../matchmaking-state" }

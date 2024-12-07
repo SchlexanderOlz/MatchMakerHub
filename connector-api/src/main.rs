@@ -22,12 +22,12 @@ mod models;
 
 static DEFAULT_HOST_ADDRESS: &str = "0.0.0.0:4000";
 
-fn setup_listeners(io: &SocketIo, adapter: Arc<RedisAdapterDefault>) {
+fn setup_listeners(io: &SocketIo, adapter: Arc<RedisAdapterDefault>, ranking_client: Arc<gn_ranking_client_rs::RankingClient>) {
     let match_maker = match_maker::MatchMaker::new(adapter.clone());
     let adapter_clone = adapter.clone();
     let on_match_search = move |socket: SocketRef| {
         info!("Socket.IO connected: {:?} {:?}", socket.ns(), socket.id);
-        let handler = Arc::new(Handler::new(adapter_clone.clone()));
+        let handler = Arc::new(Handler::new(adapter_clone.clone(), ranking_client));
 
         let search_handler = handler.clone();
         socket.on(
@@ -92,8 +92,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let publisher = RedisInfoPublisher::new(adapter.client.get_connection().unwrap());
     let adapter = Arc::new(adapter.with_publisher(publisher));
 
+    let ranking_client = Arc::new(gn_ranking_client_rs::RankingClient::new(
+        std::env::var("RANKING_API_KEY").unwrap(),
+    ));
+
     let (layer, io) = SocketIo::new_layer();
-    setup_listeners(&io, adapter);
+    setup_listeners(&io, adapter, ranking_client);
 
     let cors = CorsLayer::new().allow_origin(Any);
 
@@ -152,11 +156,8 @@ mod tests {
             session_token: "saus".to_string(),
             region: "eu".to_string(),
             game: "SchnapsenTest".to_string(),
-            mode: GameMode {
-                player_count: 2,
-                name: "duo".to_string(),
-                computer_lobby: false,
-            },
+            mode: "duo".to_string(),
+            ai: false,
         };
 
         socket
@@ -221,11 +222,8 @@ mod tests {
             session_token: "saus".to_string(),
             region: "eu".to_string(),
             game: "Schnapsen".to_string(),
-            mode: GameMode {
-                player_count: 2,
-                name: "duo".to_string(),
-                computer_lobby: false,
-            },
+            mode: "duo".to_string(),
+            ai: false,
         };
 
         let search = make_search();

@@ -8,7 +8,7 @@ mod tests {
 
     use crate::{
         adapters::{Gettable, Insertable, Removable, Updateable},
-        models::{DBGameServer, GameMode, GameServerUpdater},
+        models::{DBGameServer, GameServerUpdater},
     };
 
     #[test]
@@ -17,7 +17,7 @@ mod tests {
     fn test_redis_adapter_insert_game_server() {
         use crate::adapters::redis::publisher::native::RedisInfoPublisher;
         use crate::adapters::redis::RedisAdapter;
-        use crate::models::{GameMode, GameServer};
+        use crate::models::{GameServer};
 
         let adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
         let publisher = RedisInfoPublisher::new(adapter.client.get_connection().unwrap());
@@ -27,14 +27,9 @@ mod tests {
         let game_server = GameServer {
             region: "eu".to_owned(),
             game: "Test Server".to_owned(),
-            mode: GameMode {
-                name: "Test Mode".to_owned(),
-                player_count: 2,
-                computer_lobby: false,
-            },
+            mode: "Test Mode".to_owned(),
             server_pub: "127.0.0.1:3456".to_owned(),
             server_priv: "127.0.0.1:3456".to_owned(),
-            token: "test_token".to_owned(),
             healthy: true,
         };
         adapter.insert(game_server).unwrap();
@@ -56,14 +51,9 @@ mod tests {
         let game_server = GameServer {
             region: "eu".to_owned(),
             game: "Test Server".to_owned(),
-            mode: GameMode {
-                name: "Test Mode".to_owned(),
-                player_count: 10,
-                computer_lobby: false,
-            },
+            mode: "Test Mode".to_owned(),
             server_pub: "127.0.0.1:3456".to_owned(),
             server_priv: "127.0.0.1:3456".to_owned(),
-            token: "test_token".to_owned(),
             healthy: true,
         };
         adapter.insert(game_server.clone()).unwrap();
@@ -92,14 +82,9 @@ mod tests {
         let game_server = GameServer {
             region: "eu".to_owned(),
             game: "Test Server".to_owned(),
-            mode: GameMode {
-                name: "Test Mode".to_owned(),
-                player_count: 10,
-                computer_lobby: false,
-            },
+            mode: "Test Mode".to_owned(),
             server_pub: "127.0.0.1:3456".to_owned(),
             server_priv: "127.0.0.1:3456".to_owned(),
-            token: "test_token".to_owned(),
             healthy: true,
         };
         let uuid = adapter.insert(game_server.clone()).unwrap();
@@ -115,7 +100,7 @@ mod tests {
     fn test_redis_adapter_update_game_server() {
         use crate::adapters::redis::publisher::native::RedisInfoPublisher;
         use crate::adapters::redis::{RedisAdapter};
-        use crate::models::{GameMode, GameServer};
+        use crate::models::{GameServer};
 
         let adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
         let publisher = RedisInfoPublisher::new(adapter.client.get_connection().unwrap());
@@ -125,14 +110,9 @@ mod tests {
         let game_server = GameServer {
             region: "eu".to_owned(),
             game: "Test Server".to_owned(),
-            mode: GameMode {
-                name: "Test Mode".to_owned(),
-                player_count: 2,
-                computer_lobby: false,
-            },
+            mode: "Test Mode".to_owned(),
             server_pub: "127.0.0.1:3456".to_owned(),
             server_priv: "127.0.0.1:3456".to_owned(),
-            token: "test_token".to_owned(),
             healthy: true,
         };
         let uuid = adapter.insert(game_server.clone()).unwrap();

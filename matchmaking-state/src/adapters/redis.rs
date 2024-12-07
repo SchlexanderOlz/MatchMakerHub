@@ -193,6 +193,7 @@ where
             players: players.clone(),
             mode: example_searcher.mode,
             game: example_searcher.game,
+            ai: example_searcher.ai,
         };
 
         let handles: Vec<_> = self

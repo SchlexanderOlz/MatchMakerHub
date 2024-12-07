@@ -19,6 +19,7 @@ tower-http = { version = "0.6.1", features = ["cors", "auth"] }
 socketioxide = "0.15.0"
 reqwest = { version = "0.12.9", features = ["json", "blocking"] }
 uuid = { version = "1.11.0", features = ["v4"] }
+gn-ranking-client-rs = { path = "../../gn-ranking-client-rs" }
 
 [dev-dependencies]
 rust_socketio = { version = "*", features = ["async"] }
@@ -26,3 +27,6 @@ futures-util = "0.3.30"
 
 [profile.release]
 opt-level = 3
+
+[patch.crates-io]
+gn-matchmaking-state = { path = "../matchmaking-state" }

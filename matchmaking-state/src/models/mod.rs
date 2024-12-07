@@ -15,10 +15,9 @@ use crate::adapters::redis::RedisFilter;
 pub struct GameServer {
     pub region: String,
     pub game: String,
-    pub mode: GameMode,
+    pub mode: String,
     pub server_pub: String,
     pub server_priv: String,
-    pub token: String, // Token to authorize as the main-server at this game-server
     pub healthy: bool,
 }
 
@@ -33,10 +32,9 @@ pub struct DBGameServer {
     pub uuid: String,
     pub region: String,
     pub game: String,
-    pub mode: GameMode,
+    pub mode: String,
     pub server_pub: String,
     pub server_priv: String,
-    pub token: String,
     pub healthy: bool,
 }
 
@@ -50,11 +48,10 @@ impl PartialEq for DBGameServer {
 #[cfg_attr(feature = "redis", derive(RedisUpdater), name("game_servers"))]
 pub struct GameServerUpdater {
     pub game: Option<String>,
-    pub mode: Option<GameMode>,
+    pub mode: Option<String>,
     pub region: Option<String>,
     pub server_pub: Option<String>,
     pub server_priv: Option<String>,
-    pub token: Option<String>,
     pub healthy: Option<bool>,
 }
 
@@ -73,13 +70,6 @@ impl RedisFilter<DBGameServer> for GameServerFilter {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[cfg_attr(feature = "redis", derive(RedisOutputReader, RedisInsertWriter))]
-pub struct GameMode {
-    pub name: String,
-    pub player_count: u32,
-    pub computer_lobby: bool,
-}
 
 #[derive(Debug, Clone)]
 #[cfg_attr(
@@ -90,7 +80,8 @@ pub struct GameMode {
 pub struct Searcher {
     pub player_id: String,
     pub elo: u32,
-    pub mode: GameMode,
+    pub mode: String,
+    pub ai: bool,
     pub game: String,
     pub region: String,
     pub wait_start: SystemTime,
@@ -101,7 +92,8 @@ pub struct Searcher {
 pub struct SearcherUpdate {
     pub player_id: Option<String>,
     pub elo: Option<u32>,
-    pub mode: Option<GameMode>,
+    pub mode: Option<String>,
+    pub ai: Option<bool>,
     pub game: Option<String>,
     pub region: Option<String>,
     pub wait_start: Option<SystemTime>,
@@ -118,7 +110,8 @@ pub struct DBSearcher {
     pub uuid: String,
     pub player_id: String,
     pub elo: u32,
-    pub mode: GameMode,
+    pub mode: String,
+    pub ai: bool,
     pub game: String,
     pub region: String,
     pub wait_start: SystemTime,
@@ -135,7 +128,8 @@ pub struct Match {
     pub region: String,
     pub game: String,
     pub players: Vec<String>,
-    pub mode: GameMode,
+    pub mode: String,
+    pub ai: bool,
 }
 
 unsafe impl Send for Match {}
@@ -155,7 +149,8 @@ pub struct SearcherMatchConfig {
 #[cfg_attr(feature = "redis", derive(RedisInsertWriter, RedisIdentifiable), name("active_matches"))]
 pub struct ActiveMatch {
     pub game: String,
-    pub mode: GameMode,
+    pub mode: String,
+    pub ai: bool,
     pub server_pub: String,
     pub server_priv: String,
     pub region: String,
@@ -169,7 +164,8 @@ pub struct ActiveMatchDB {
     #[uuid]
     pub uuid: String,
     pub game: String,
-    pub mode: GameMode,
+    pub mode: String,
+    pub ai: bool,
     pub server_pub: String,
     pub server_priv: String,
     pub region: String,

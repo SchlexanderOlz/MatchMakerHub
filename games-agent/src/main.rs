@@ -9,7 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 use gn_matchmaking_state::models::{
-    ActiveMatch, ActiveMatchDB, DBGameServer, GameMode, GameServer,
+    ActiveMatch, ActiveMatchDB, DBGameServer, GameServer,
 };
 use gn_matchmaking_state::prelude::*;
 use healthcheck::HealthCheck;
@@ -43,6 +43,7 @@ async fn on_match_created(created_match: CreatedMatch, conn: Arc<RedisAdapterDef
         region: created_match.region,
         game: created_match.game,
         mode: created_match.mode,
+        ai: created_match.ai,
         server_pub: created_match.url_pub,
         server_priv: created_match.url_priv,
         read: created_match.read.clone(),
@@ -96,7 +97,7 @@ async fn init_game_ranking(
     );
     let game = gn_ranking_client_rs::models::create::Game {
         game_name: created_game.game.clone(),
-        game_mode: created_game.mode.name.clone(),
+        game_mode: created_game.mode.clone(),
         max_stars: created_game.ranking_conf.max_stars,
         description: created_game.ranking_conf.description.clone(),
         performances: created_game

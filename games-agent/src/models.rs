@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use itertools::Itertools;
 
-use gn_matchmaking_state::models::{ActiveMatchDB, GameMode, GameServer};
+use gn_matchmaking_state::models::{ActiveMatchDB, GameServer};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
@@ -9,7 +9,8 @@ pub struct CreatedMatch {
     pub region: String,
     pub player_write: HashMap<String, String>,
     pub game: String,
-    pub mode: GameMode,
+    pub mode: String,
+    pub ai: bool,
     pub read: String,
     pub url_pub: String,
     pub url_priv: String,
@@ -42,7 +43,8 @@ pub struct RankingConf {
 pub struct GameServerCreateRequest {
     pub region: String,
     pub game: String,
-    pub mode: GameMode,
+    pub mode: String,
+    pub ai: bool,
     pub server_pub: String,
     pub server_priv: String,
     pub token: String, // Token to authorize as the main-server at this game-server
@@ -57,7 +59,6 @@ impl Into<GameServer> for GameServerCreateRequest {
             mode: self.mode,
             server_pub: self.server_pub,
             server_priv: self.server_priv,
-            token: self.token,
             healthy: true,
         }
     }
@@ -92,7 +93,7 @@ impl Into<gn_ranking_client_rs::models::create::Match> for MatchResultMaker {
 
         gn_ranking_client_rs::models::create::Match {
         game_name: active_match.game.clone(),
-        game_mode: active_match.mode.name.clone(),
+        game_mode: active_match.mode.clone(),
         player_match_list: result
             .ranking
             .performances
