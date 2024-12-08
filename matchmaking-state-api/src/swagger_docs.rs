@@ -27,6 +27,10 @@ use crate::models;
             utoipa::TupleUnit,
             models::ActiveMatch,
             models::ActiveMatchFilter,
+            models::GameServer,
+            models::GameServerFilter,
+            models::HostRequest,
+            models::HostRequestFilter,
         )
     ),
     tags((name = "Matchmaking State API", description = "Accessing matchmaking-state runtime-values")),

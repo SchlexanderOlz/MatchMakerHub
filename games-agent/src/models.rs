@@ -132,3 +132,16 @@ pub struct Task {
     pub write: String,
     pub players: Vec<String>
 }
+
+
+#[derive(Debug, Clone, Deserialize)]
+pub enum MatchError {
+    AllPlayersDisconnected,
+    PlayerDidNotJoin(String),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MatchAbrubtClose {
+    pub match_id: String,
+    pub reason: MatchError,
+}

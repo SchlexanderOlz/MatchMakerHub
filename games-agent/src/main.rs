@@ -1,17 +1,18 @@
-use futures_lite::StreamExt;
+use futures_lite::{Future, StreamExt};
 use gn_ranking_client_rs::RankingClient;
 use itertools::Itertools;
+use lapin::message::Delivery;
 use lazy_static::lazy_static;
-use models::{CreatedMatch, GameServerCreateRequest, MatchResult, MatchResultMaker};
+use models::{
+    CreatedMatch, GameServerCreateRequest, MatchAbrubtClose, MatchResult, MatchResultMaker,
+};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use gn_matchmaking_state_types::{
-    ActiveMatch, ActiveMatchDB, DBGameServer, GameServer,
-};
 use gn_matchmaking_state::prelude::*;
+use gn_matchmaking_state_types::{ActiveMatch, ActiveMatchDB, DBGameServer, GameServer};
 use healthcheck::HealthCheck;
 use lapin::options::{
     BasicAckOptions, BasicConsumeOptions, BasicNackOptions, BasicPublishOptions,
@@ -25,6 +26,7 @@ use tracing_subscriber::FmtSubscriber;
 
 const CREATE_MATCH_QUEUE: &str = "match-created";
 const CREATE_GAME_QUEUE: &str = "game-created";
+const MATCH_ABRUPT_CLOSE_QUEUE: &str = "match-abrupt-close";
 const HEALTH_CHECK_QUEUE: &str = "health-check";
 const RESULT_MATCH_QUEUE: &str = "match-result";
 const AI_QUEUE: &str = "ai-task-generate-request";
@@ -37,7 +39,52 @@ lazy_static! {
         RankingClient::new(std::env::var("RANKING_API_KEY").unwrap().to_owned());
 }
 
-async fn on_match_created(created_match: CreatedMatch, conn: Arc<RedisAdapterDefault>, channel: Arc<Channel>) {
+async fn setup_queue_and_listen<F, Fut>(
+    channel: Arc<Channel>,
+    queue_name: &str,
+    conn: Arc<RedisAdapterDefault>,
+    on_message: F,
+) where
+    F: Fn(Arc<Channel>, Arc<RedisAdapterDefault>, Delivery) -> Fut,
+    Fut: Future<Output = ()> + Send + Sync + 'static,
+{
+    channel
+        .queue_declare(
+            queue_name,
+            QueueDeclareOptions::default(),
+            FieldTable::default(),
+        )
+        .await
+        .unwrap();
+
+    let mut consumer = channel
+        .basic_consume(
+            queue_name,
+            &format!("games-agent-{}", queue_name),
+            BasicConsumeOptions::default(),
+            FieldTable::default(),
+        )
+        .await
+        .unwrap();
+
+    info!("Listening on queue: {}", queue_name);
+    while let Some(delivery) = consumer.next().await {
+        debug!("Received event: {:?}", delivery);
+        let conn = conn.clone();
+        let channel = channel.clone();
+        tokio::spawn(on_message(
+            channel.clone(),
+            conn.clone(),
+            delivery.expect("error in consumer"),
+        ));
+    }
+}
+
+async fn on_match_created(
+    created_match: CreatedMatch,
+    conn: Arc<RedisAdapterDefault>,
+    channel: Arc<Channel>,
+) {
     debug!("Match created: {:?}", created_match);
 
     let insert = ActiveMatch {
@@ -64,14 +111,40 @@ async fn on_match_created(created_match: CreatedMatch, conn: Arc<RedisAdapterDef
                 address: created_match.url_priv.clone(),
                 read: created_match.read.clone(),
                 write: created_match.player_write.get(&player).unwrap().clone(),
-                players: created_match.player_write.keys().map(|x| x.clone()).collect(),
+                players: created_match
+                    .player_write
+                    .keys()
+                    .map(|x| x.clone())
+                    .collect(),
             };
 
-            channel.basic_publish("", AI_QUEUE, BasicPublishOptions::default(), serde_json::to_vec(&task).unwrap().as_slice(), BasicProperties::default()).await.unwrap();
-        };
+            channel
+                .basic_publish(
+                    "",
+                    AI_QUEUE,
+                    BasicPublishOptions::default(),
+                    serde_json::to_vec(&task).unwrap().as_slice(),
+                    BasicProperties::default(),
+                )
+                .await
+                .unwrap();
+        }
         debug!("AI tasks created for match {:?}", created_match.read);
     }
+}
 
+async fn on_match_abrupt_close(reason: MatchAbrubtClose, conn: Arc<RedisAdapterDefault>) {
+    debug!("Match closed abruptly: {:?}", reason);
+
+    let match_ = conn
+        .all()
+        .unwrap()
+        .find(|x: &ActiveMatchDB| x.read.clone() == reason.match_id);
+
+    if let Some(match_) = match_ {
+        conn.remove(&match_.uuid).unwrap();
+        debug!("Match {:?} removed", match_.uuid);
+    }
 }
 
 async fn on_match_result(result: MatchResult, conn: Arc<RedisAdapterDefault>) {
@@ -148,118 +221,82 @@ async fn save_game(
     Ok(server)
 }
 
+async fn listen_for_match_abrupt_close(channel: Arc<Channel>, conn: Arc<RedisAdapterDefault>) {
+    setup_queue_and_listen(
+        channel,
+        MATCH_ABRUPT_CLOSE_QUEUE,
+        conn,
+        |_, conn, delivery| async move {
+            delivery.ack(BasicAckOptions::default()).await.expect("ack");
+
+            let reason: MatchAbrubtClose = serde_json::from_slice(&delivery.data).unwrap();
+            on_match_abrupt_close(reason, conn.clone()).await;
+        },
+    )
+    .await;
+}
+
 async fn listen_for_match_result(channel: Arc<Channel>, conn: Arc<RedisAdapterDefault>) {
-    channel
-        .queue_declare(
-            RESULT_MATCH_QUEUE,
-            QueueDeclareOptions::default(),
-            FieldTable::default(),
-        )
-        .await
-        .unwrap();
-
-    let mut consumer = channel
-        .basic_consume(
-            RESULT_MATCH_QUEUE,
-            "games-agent-match-result",
-            BasicConsumeOptions::default(),
-            FieldTable::default(),
-        )
-        .await
-        .unwrap();
-
-    info!("Listening for match result events");
-    while let Some(delivery) = consumer.next().await {
-        debug!("Received match result event: {:?}", delivery);
-        let conn = conn.clone();
-        tokio::spawn(async move {
-            let delivery = delivery.expect("error in consumer");
+    setup_queue_and_listen(
+        channel,
+        RESULT_MATCH_QUEUE,
+        conn,
+        |_, conn, delivery| async move {
             delivery.ack(BasicAckOptions::default()).await.expect("ack");
 
             let result: MatchResult = serde_json::from_slice(&delivery.data).unwrap();
             on_match_result(result, conn.clone()).await;
-        });
-    }
+        },
+    )
+    .await;
 }
 
 async fn listen_for_match_created(channel: Arc<Channel>, conn: Arc<RedisAdapterDefault>) {
     channel
         .queue_declare(
-            CREATE_MATCH_QUEUE,
+            AI_QUEUE,
             QueueDeclareOptions::default(),
             FieldTable::default(),
         )
         .await
         .unwrap();
 
-    channel.queue_declare(AI_QUEUE, QueueDeclareOptions::default(), FieldTable::default()).await.unwrap();
-
-    let mut consumer = channel
-        .basic_consume(
-            CREATE_MATCH_QUEUE,
-            "games-agent-create-match",
-            BasicConsumeOptions::default(),
-            FieldTable::default(),
-        )
-        .await
-        .unwrap();
-
-    info!("Listening for match created events");
-    while let Some(delivery) = consumer.next().await {
-        debug!("Received match created event: {:?}", delivery);
-        let conn = conn.clone();
-        let channel = channel.clone();
-        tokio::spawn(async move {
-            let delivery = delivery.expect("error in consumer");
+    setup_queue_and_listen(
+        channel,
+        CREATE_MATCH_QUEUE,
+        conn,
+        |channel, conn, delivery| async move {
             delivery.ack(BasicAckOptions::default()).await.expect("ack");
 
             let created_match: CreatedMatch = serde_json::from_slice(&delivery.data).unwrap();
             on_match_created(created_match, conn.clone(), channel).await;
-        });
-    }
+        },
+    )
+    .await;
 }
 
 async fn listen_for_game_created(channel: Arc<Channel>, conn: Arc<RedisAdapterDefault>) {
-    channel
-        .queue_declare(
-            CREATE_GAME_QUEUE,
-            QueueDeclareOptions::default(),
-            FieldTable::default(),
-        )
-        .await
-        .unwrap();
+    setup_queue_and_listen(
+        channel,
+        CREATE_GAME_QUEUE,
+        conn,
+        |channel, conn, delivery| async move {
+            let reply_to = match delivery.properties.reply_to() {
+                Some(reply_to) => reply_to.clone(),
+                None => {
+                    delivery
+                        .nack(BasicNackOptions::default())
+                        .await
+                        .expect("nack");
+                    return;
+                }
+            };
+            debug!("Received game created event: {:?}", delivery);
+            delivery.ack(BasicAckOptions::default()).await.expect("ack");
 
-    let mut consumer = channel
-        .basic_consume(
-            CREATE_GAME_QUEUE,
-            "games-agent-create-game",
-            BasicConsumeOptions::default(),
-            FieldTable::default(),
-        )
-        .await
-        .unwrap();
+            let conn = conn.clone();
+            let channel = channel.clone();
 
-    info!("Listening for game created events");
-    while let Some(delivery) = consumer.next().await {
-        let delivery = delivery.expect("error in consumer");
-
-        let reply_to = match delivery.properties.reply_to() {
-            Some(reply_to) => reply_to.clone(),
-            None => {
-                delivery
-                    .nack(BasicNackOptions::default())
-                    .await
-                    .expect("nack");
-                continue;
-            }
-        };
-        debug!("Received game created event: {:?}", delivery);
-        delivery.ack(BasicAckOptions::default()).await.expect("ack");
-
-        let conn = conn.clone();
-        let channel = channel.clone();
-
-        tokio::spawn(async move {
             let created_game: GameServerCreateRequest =
                 serde_json::from_slice(&delivery.data).unwrap();
             let game_id = save_game(created_game.clone().into(), conn.clone())
@@ -280,31 +317,13 @@ async fn listen_for_game_created(channel: Arc<Channel>, conn: Arc<RedisAdapterDe
                 )
                 .await
                 .unwrap();
-        });
-    }
+        },
+    )
+    .await;
 }
 
 async fn listen_for_healthcheck(channel: Arc<Channel>, conn: Arc<RedisAdapterDefault>) {
-    channel
-        .queue_declare(
-            HEALTH_CHECK_QUEUE,
-            QueueDeclareOptions::default(),
-            FieldTable::default(),
-        )
-        .await
-        .unwrap();
-
-    let mut consumer = channel
-        .basic_consume(
-            HEALTH_CHECK_QUEUE,
-            "games-agent-healthcheck",
-            BasicConsumeOptions::default(),
-            FieldTable::default(),
-        )
-        .await
-        .unwrap();
-
-    let healthcheck = Arc::new(Mutex::new(HealthCheck::new(conn)));
+    let healthcheck = Arc::new(Mutex::new(HealthCheck::new(conn.clone())));
 
     {
         let healthcheck = healthcheck.clone();
@@ -314,18 +333,19 @@ async fn listen_for_healthcheck(channel: Arc<Channel>, conn: Arc<RedisAdapterDef
         });
     }
 
-    info!("Listening for healthcheck events");
-    while let Some(delivery) = consumer.next().await {
-        let healthcheck = healthcheck.clone();
-        tokio::spawn(async move {
-            debug!("Received healthcheck event: {:?}", delivery);
-            let delivery = delivery.expect("error in consumer");
-            delivery.ack(BasicAckOptions::default()).await.expect("ack");
+    setup_queue_and_listen(channel, HEALTH_CHECK_QUEUE, conn, {
+        |_, _, delivery| {
+            let healthcheck = healthcheck.clone();
+            async move {
+                debug!("Received healthcheck event: {:?}", delivery);
+                delivery.ack(BasicAckOptions::default()).await.expect("ack");
 
-            let client_id: String = std::string::String::from_utf8(delivery.data).unwrap();
-            healthcheck.lock().unwrap().refresh(client_id);
-        });
-    }
+                let client_id: String = std::string::String::from_utf8(delivery.data).unwrap();
+                healthcheck.lock().unwrap().refresh(client_id);
+            }
+        }
+    })
+    .await;
 }
 
 #[tokio::main]
@@ -370,8 +390,15 @@ async fn main() {
         tokio::spawn(listen_for_match_result(channel, state.clone()))
     };
 
+    let listen_for_match_abrupt_close= {
+        let state = state.clone();
+        let channel = amqp_channel.clone();
+        tokio::spawn(listen_for_match_abrupt_close(channel, state.clone()))
+    };
+
     listen_for_healthcheck.await.unwrap();
     listen_for_match_created.await.unwrap();
     listen_for_match_result.await.unwrap();
     listen_for_game_created.await.unwrap();
+    listen_for_match_abrupt_close.await.unwrap();
 }
