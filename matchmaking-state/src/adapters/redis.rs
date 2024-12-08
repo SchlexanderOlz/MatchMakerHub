@@ -2,13 +2,13 @@ use std::{
     collections::HashMap, future::Future, sync::{Arc, Mutex}
 };
 
-use crate::models::{DBSearcher, Match};
+use crate::models::Match;
 
 use super::{
     DataAdapter, Gettable, InfoPublisher, Insertable, Matcher, Publishable, Removable, Searchable,
     Updateable,
 };
-use redis::{Commands, Connection, FromRedisValue, Msg, Pipeline, PubSub, ToRedisArgs};
+pub use redis::{Commands, Connection, FromRedisValue, Msg, Pipeline, PubSub, ToRedisArgs};
 use tracing::{error, info};
 
 mod io;

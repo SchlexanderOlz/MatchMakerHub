@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use gn_matchmaking_state::models::{DBSearcher, HostRequestDB};
+use gn_matchmaking_state_types::{DBSearcher, HostRequestDB};
 use gn_matchmaking_state::prelude::*;
 use handler::Handler;
 use match_maker::MatchMaker;
@@ -17,7 +17,6 @@ use tower_http::{
 use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
-mod ezauth;
 mod handler;
 mod match_maker;
 mod models;

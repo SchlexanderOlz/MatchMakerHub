@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use gn_matchmaking_state::models::{
+use gn_matchmaking_state_types::{
     ActiveMatch, ActiveMatchDB, DBGameServer, GameServer,
 };
 use gn_matchmaking_state::prelude::*;

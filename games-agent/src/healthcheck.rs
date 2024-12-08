@@ -1,7 +1,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use chrono::{DateTime, Utc};
-use gn_matchmaking_state::{adapters::{Removable, Updateable}, models::GameServerUpdater, prelude::RedisAdapterDefault};
+use gn_matchmaking_state::{adapters::{Removable, Updateable}, prelude::RedisAdapterDefault};
+use gn_matchmaking_state_types::GameServerUpdater;
 use tracing::debug;
 
 pub struct HealthCheck {

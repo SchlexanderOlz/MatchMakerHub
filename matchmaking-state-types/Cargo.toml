@@ -1,0 +1,18 @@
+[package]
+name = "gn-matchmaking-state-types"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gn-matchmaking-state = { version = "0.1.10", features = ["redis"] }
+gn-redisadapter-derive = { version = "0.1.2" }
+serde = { version = "1.0.215", features = ["derive"] }
+
+[features]
+default = ["redis"]
+redis = []
+
+[patch.crates-io]
+gn-matchmaking-state = { path = "../matchmaking-state", features = ["redis"] }
+gn-redisadapter-derive = { path = "../matchmaking-state/redisadapter-derive" }
+

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use itertools::Itertools;
 
-use gn_matchmaking_state::models::{ActiveMatchDB, GameServer};
+use gn_matchmaking_state_types::{ActiveMatchDB, GameServer};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug)]

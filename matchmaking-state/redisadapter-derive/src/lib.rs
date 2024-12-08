@@ -75,8 +75,8 @@ fn impl_insert_writer(ast: &syn::DeriveInput) -> TokenStream {
     }).collect();
 
     let gen = quote! {
-            impl crate::adapters::redis::RedisInsertWriter for #name {
-                fn write(&self, pipe: &mut redis::Pipeline, base_key: &str) -> Result<(), Box<dyn std::error::Error>> {
+            impl gn_matchmaking_state::adapters::redis::RedisInsertWriter for #name {
+                fn write(&self, pipe: &mut gn_matchmaking_state::adapters::redis::Pipeline, base_key: &str) -> Result<(), Box<dyn std::error::Error>> {
                     #(#sets)*
                     Ok(())
                 }
@@ -110,7 +110,7 @@ fn impl_output_reader(ast: &syn::DeriveInput) -> TokenStream {
             let field_name = field.ident.as_ref().unwrap();
             let ty = &field.ty;
             quote! {
-                #field_name: <#ty as crate::adapters::redis::RedisOutputReader>::read(connection, &format!("{base_key}:{}", stringify!(#field_name)))?
+                #field_name: <#ty as gn_matchmaking_state::adapters::redis::RedisOutputReader>::read(connection, &format!("{base_key}:{}", stringify!(#field_name)))?
             }
         })
         .collect();
@@ -123,14 +123,14 @@ fn impl_output_reader(ast: &syn::DeriveInput) -> TokenStream {
     };
 
     let gen = quote! {
-        impl crate::adapters::redis::RedisOutputReader for #name {
-            fn read(connection: &mut redis::Connection, base_key: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        impl gn_matchmaking_state::adapters::redis::RedisOutputReader for #name {
+            fn read(connection: &mut gn_matchmaking_state::adapters::redis::Connection, base_key: &str) -> Result<Self, Box<dyn std::error::Error>> {
                 Ok(Self {
                     #uuid_code
                     #(#sets),*
                 })
             }
-        }
+    }
     };
 
     gen.into()
@@ -150,7 +150,7 @@ fn impl_identifiable(ast: &syn::DeriveInput) -> TokenStream {
 
     let next_uuid = match single_instance {
         true => quote! {
-            fn next_uuid(connection: &mut redis::Connection) -> Result<String, Box<dyn std::error::Error>> {
+            fn next_uuid(connection: &mut gn_matchmaking_state::adapters::redis::Connection) -> Result<String, Box<dyn std::error::Error>> {
                 Ok(format!("-1:{}", Self::name()))
             }
         },
@@ -158,13 +158,13 @@ fn impl_identifiable(ast: &syn::DeriveInput) -> TokenStream {
     };
 
     let gen = quote! {
-        impl crate::adapters::redis::RedisIdentifiable for #name {
+        impl gn_matchmaking_state::adapters::redis::RedisIdentifiable for #name {
             fn name() -> String {
                 #db_name.to_owned()
             }
 
             #next_uuid
-        }
+    }
     };
     gen.into()
 }
@@ -205,9 +205,10 @@ fn impl_updater(ast: &syn::DeriveInput, parent: &SafeDataStruct) -> TokenStream 
 
     let parent_ident = Ident::new(&parent.type_name, name.span());
     let gen = quote! {
-            impl crate::adapters::redis::RedisUpdater<#parent_ident> for #name {
-                fn update(&self, pipe: &mut redis::Pipeline, uuid: &str) -> Result<(), Box<dyn std::error::Error>> {
-                    use crate::adapters::redis::RedisInsertWriter;
+
+            impl gn_matchmaking_state::adapters::redis::RedisUpdater<#parent_ident> for #name {
+                fn update(&self, pipe: &mut gn_matchmaking_state::adapters::redis::Pipeline, uuid: &str) -> Result<(), Box<dyn std::error::Error>> {
+                    use gn_matchmaking_state::adapters::redis::RedisInsertWriter;
                     #(#sets)*
                     Ok(())
                 }

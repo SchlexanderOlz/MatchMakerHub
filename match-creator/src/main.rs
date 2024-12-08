@@ -1,3 +1,4 @@
+use gn_matchmaking_state_types::DBSearcher;
 use lapin::{
     options::{BasicPublishOptions, QueueDeclareOptions},
     types::FieldTable,
@@ -9,7 +10,8 @@ use tokio::runtime::Runtime;
 use tracing::{debug, info, warn, Level};
 use tracing_subscriber::FmtSubscriber;
 
-use gn_matchmaking_state::models::{ActiveMatch, DBSearcher, Match};
+use gn_matchmaking_state::models::{Match};
+
 use gn_matchmaking_state::prelude::*;
 use serde::{Deserialize, Serialize};
 

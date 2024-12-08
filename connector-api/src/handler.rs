@@ -1,10 +1,11 @@
+use ezauth::EZAUTHValidationResponse;
 use gn_matchmaking_state::{
     adapters::{redis::RedisAdapterDefault, Gettable, Insertable, Removable, Updateable},
-    models::{
-        DBGameServer, DBSearcher, GameServer, HostRequest, HostRequestDB, HostRequestUpdate,
-        Searcher,
-    },
 };
+use gn_matchmaking_state_types::{DBGameServer, DBSearcher, GameServer, HostRequest, HostRequestDB, HostRequestUpdate,
+        Searcher};
+use rand::{distributions::Alphanumeric, Rng};
+use uuid::Uuid;
 use std::{
     f32::consts::E,
     sync::{Arc, Mutex},
@@ -16,7 +17,6 @@ use axum::body::Bytes;
 use socketioxide::extract::SocketRef;
 
 use crate::{
-    ezauth::{self, EZAUTHValidationResponse},
     models::{DirectConnect, Host, Match, Search},
 };
 
@@ -231,6 +231,26 @@ impl Handler {
     ) -> Result<EZAUTHValidationResponse, Box<dyn std::error::Error + 'static>> {
         if let Some(response) = self.ezauth_response.lock().unwrap().clone() {
             return Ok(response);
+        }
+
+        #[cfg(disable_auth)]
+        {
+            let random_id = Uuid::new_v4().to_string();
+            let random_username: String = rand::thread_rng()
+                .sample_iter(&Alphanumeric)
+                .take(10)
+                .map(char::from)
+                .collect();
+            let random_email = format!("{}@example.com", random_username);
+
+            let validation = EZAUTHValidationResponse {
+                _id: random_id,
+                username: random_username,
+                email: random_email,
+                created_at: "2021-01-01T00:00:00.000Z".to_string(),
+            };
+            self.ezauth_response.lock().unwrap().replace(validation.clone());
+            return Ok(validation);
         }
 
         let validation = ezauth::validate_user(session_token, &self.ezauth_url).await?;

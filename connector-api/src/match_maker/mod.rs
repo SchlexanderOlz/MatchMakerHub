@@ -5,13 +5,11 @@ use std::{
 };
 
 use crate::models::Match;
-use gn_matchmaking_state::{
-    adapters::{
-        redis::{NotifyOnRedisEvent, RedisAdapterDefault},
-        Gettable,
-    },
-    models::{ActiveMatch, ActiveMatchDB},
+use gn_matchmaking_state::adapters::{
+    redis::{NotifyOnRedisEvent, RedisAdapterDefault},
+    Gettable,
 };
+use gn_matchmaking_state_types::{ActiveMatch, ActiveMatchDB};
 use tracing::debug;
 
 #[derive(Debug)]
@@ -63,7 +61,7 @@ where {
 
     pub fn create(
         &mut self,
-        match_info: gn_matchmaking_state::models::ActiveMatchDB,
+        match_info: gn_matchmaking_state_types::ActiveMatchDB,
     ) -> Result<(), MatchingError> {
         debug!("Handlers: {:?}", self.handlers.keys());
         debug!("Match info: {:?}", match_info);

@@ -12,6 +12,8 @@ services:
     volumes:
       - ./matchmaking-state:/usr/matchmaking-state
       - ../gn-ranking-client-rs:/gn-ranking-client-rs
+      - "./matchmaking-state-types:/usr/matchmaking-state-types"
+      - "./ezauth:/usr/ezauth"
     restart: on-failure
     depends_on:
       - redis
@@ -33,6 +35,7 @@ services:
     command: cargo run
     volumes:
       - ./matchmaking-state:/usr/matchmaking-state
+      - "./matchmaking-state-types:/usr/matchmaking-state-types"
     restart: on-failure
     depends_on:
       - redis
@@ -51,6 +54,7 @@ services:
     volumes:
       - ./matchmaking-state:/usr/matchmaking-state
       - ../gn-ranking-client-rs:/gn-ranking-client-rs
+      - "./matchmaking-state-types:/usr/matchmaking-state-types"
     restart: on-failure
     depends_on:
       - redis
@@ -60,6 +64,29 @@ services:
       - RANKING_URL=${RANKING_URL}
       - RANKING_API_KEY=${RANKING_API_KEY}
       - DEBUG=1
+    networks:
+      - game-night-network
+
+  matchmaking-state-api:
+    build:
+      context: ./matchmaking-state-api
+      dockerfile: Dockerfile.dev
+    container_name: matchmaking-state-api
+    command: cargo run
+    restart: on-failure
+    ports:
+      - "6969:6969"
+    volumes:
+      - "./matchmaking-state-types:/usr/matchmaking-state-types"
+      - ./matchmaking-state:/usr/matchmaking-state
+      - ../gn-ranking-client-rs:/gn-ranking-client-rs
+      - "./ezauth:/usr/ezauth"
+    depends_on:
+      - redis
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - HOST_URL=0.0.0.0:6969
+      - EZAUTH_URL=${EZAUTH_URL}
     networks:
       - game-night-network
 

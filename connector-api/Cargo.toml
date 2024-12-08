@@ -20,6 +20,8 @@ socketioxide = "0.15.0"
 reqwest = { version = "0.12.9", features = ["json", "blocking"] }
 uuid = { version = "1.11.0", features = ["v4"] }
 gn-ranking-client-rs = { path = "../../gn-ranking-client-rs" }
+gn-matchmaking-state-types = { version = "0.1.0" }
+ezauth = { path = "../ezauth" }
 
 [dev-dependencies]
 rust_socketio = { version = "*", features = ["async"] }
@@ -30,3 +32,4 @@ opt-level = 3
 
 [patch.crates-io]
 gn-matchmaking-state = { path = "../matchmaking-state" }
+gn-matchmaking-state-types = { path = "../matchmaking-state-types" }
