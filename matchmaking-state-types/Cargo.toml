@@ -2,6 +2,10 @@
 name = "gn-matchmaking-state-types"
 version = "0.1.0"
 edition = "2021"
+description = "Component for shared state-management-types in the game-night backend"
+license = "MIT"
+
+
 
 [dependencies]
 gn-matchmaking-state = { version = "0.1.10", features = ["redis"] }
