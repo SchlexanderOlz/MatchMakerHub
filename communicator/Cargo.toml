@@ -2,6 +2,9 @@
 name = "gn-communicator"
 version = "0.1.0"
 edition = "2021"
+description = "Component for communication for game-night microservices"
+license = "MIT"
+
 
 [dependencies]
 chrono = "0.4.39"
