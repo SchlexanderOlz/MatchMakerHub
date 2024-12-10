@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use gn_matchmaking_state_types::GameServer;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -87,4 +88,19 @@ pub struct Task {
     pub read: String,
     pub write: String,
     pub players: Vec<String>
+}
+
+impl Into<GameServer> for crate::models::GameServerCreate {
+    fn into(self) -> GameServer {
+        GameServer {
+            region: self.region,
+            game: self.game,
+            mode: self.mode,
+            server_pub: self.server_pub,
+            server_priv: self.server_priv,
+            max_players: self.max_players,
+            min_players: self.min_players,
+            healthy: true,
+        }
+    }
 }

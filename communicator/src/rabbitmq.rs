@@ -111,7 +111,7 @@ impl super::Communicator for RabbitMQCommunicator {
         ).await;
     }
 
-    async fn on_game_created<F, Fut>(&self, callback: F)
+    async fn on_game_create<F, Fut>(&self, callback: F)
     where
         F: MessageHandler<crate::models::GameServerCreate, Fut>,
         Fut: Future<Output = String> + Send + Sync + 'static,
@@ -217,7 +217,7 @@ impl super::Communicator for RabbitMQCommunicator {
 
     async fn create_game(
         &self,
-        game_server: GameServerCreate,
+        game_server: &GameServerCreate,
     ) -> Result<String, Box<dyn std::error::Error>> {
         let reply_to = self
             .channel
@@ -244,7 +244,7 @@ impl super::Communicator for RabbitMQCommunicator {
             BasicProperties::default()
                 .with_reply_to(reply_to.name().clone())
                 .with_correlation_id(uuid::Uuid::new_v4().to_string().into()),
-        );
+        ).await.unwrap();
 
         while let Some(delivery) = consumer.next().await {
             let delivery = delivery.unwrap();
@@ -261,7 +261,7 @@ impl super::Communicator for RabbitMQCommunicator {
         Err("Could not create game".into())
     }
 
-    async fn create_match(&self, match_request: CreateMatch) {
+    async fn create_match(&self, match_request: &CreateMatch) {
         self.channel
             .basic_publish(
                 "",
@@ -274,7 +274,7 @@ impl super::Communicator for RabbitMQCommunicator {
             .unwrap();
     }
 
-    async fn report_match_abrupt_close(&self, match_close: MatchAbrubtClose) {
+    async fn report_match_abrupt_close(&self, match_close: &MatchAbrubtClose) {
         self.channel
             .basic_publish(
                 "",
@@ -287,7 +287,7 @@ impl super::Communicator for RabbitMQCommunicator {
             .unwrap();
     }
 
-    async fn report_match_created(&self, created_match: CreatedMatch) {
+    async fn report_match_created(&self, created_match: &CreatedMatch) {
         self.channel
             .basic_publish(
                 "",
@@ -300,7 +300,7 @@ impl super::Communicator for RabbitMQCommunicator {
             .unwrap();
     }
 
-    async fn create_ai_task(&self, task: crate::models::Task) {
+    async fn create_ai_task(&self, task: &crate::models::Task) {
         self.channel
             .basic_publish(
                 "",
@@ -313,7 +313,7 @@ impl super::Communicator for RabbitMQCommunicator {
             .unwrap();
     }
 
-    async fn report_match_result(&self, match_result: MatchResult) {
+    async fn report_match_result(&self, match_result: &MatchResult) {
         self.channel
             .basic_publish(
                 "",
@@ -339,7 +339,7 @@ impl super::Communicator for RabbitMQCommunicator {
             .unwrap();
     }
 
-    async fn run_health_checks<F, Fut>(&self, callback: F)
+    async fn on_health_check<F, Fut>(&self, callback: F)
     where
         F: MessageHandler<String, Fut>,
         Fut: Future<Output = ()> + Send + Sync + 'static,

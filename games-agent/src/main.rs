@@ -1,35 +1,17 @@
-use futures_lite::{Future, StreamExt};
+use gn_communicator::Communicator;
 use gn_ranking_client_rs::RankingClient;
-use itertools::Itertools;
-use lapin::message::Delivery;
 use lazy_static::lazy_static;
-use models::{
-    CreatedMatch, GameServerCreateRequest, MatchAbrubtClose, MatchResult, MatchResultMaker,
-};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
+use models::MatchResultMaker;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use gn_communicator::rabbitmq::RabbitMQCommunicator;
 use gn_matchmaking_state::prelude::*;
 use gn_matchmaking_state_types::{ActiveMatch, ActiveMatchDB, DBGameServer, GameServer};
 use healthcheck::HealthCheck;
-use lapin::options::{
-    BasicAckOptions, BasicConsumeOptions, BasicNackOptions, BasicPublishOptions,
-    QueueDeclareOptions,
-};
-use lapin::types::FieldTable;
-use lapin::{BasicProperties, Channel, Connection};
-use serde::Deserialize;
-use tracing::{debug, error, info, warn, Level};
+use tracing::{debug, error, warn, Level};
 use tracing_subscriber::FmtSubscriber;
-
-const CREATE_MATCH_QUEUE: &str = "match-created";
-const CREATE_GAME_QUEUE: &str = "game-created";
-const MATCH_ABRUPT_CLOSE_QUEUE: &str = "match-abrupt-close";
-const HEALTH_CHECK_QUEUE: &str = "health-check";
-const RESULT_MATCH_QUEUE: &str = "match-result";
-const AI_QUEUE: &str = "ai-task-generate-request";
 
 mod healthcheck;
 mod models;
@@ -37,53 +19,20 @@ mod models;
 lazy_static! {
     static ref ranking_client: RankingClient =
         RankingClient::new(std::env::var("RANKING_API_KEY").unwrap().to_owned());
+    static ref communicator: RabbitMQCommunicator = {
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(RabbitMQCommunicator::connect(
+                std::env::var("AMQP_URL").unwrap().as_str(),
+            ))
+    };
 }
 
-async fn setup_queue_and_listen<F, Fut>(
-    channel: Arc<Channel>,
-    queue_name: &str,
-    conn: Arc<RedisAdapterDefault>,
-    on_message: F,
-) where
-    F: Fn(Arc<Channel>, Arc<RedisAdapterDefault>, Delivery) -> Fut,
-    Fut: Future<Output = ()> + Send + Sync + 'static,
-{
-    channel
-        .queue_declare(
-            queue_name,
-            QueueDeclareOptions::default(),
-            FieldTable::default(),
-        )
-        .await
-        .unwrap();
 
-    let mut consumer = channel
-        .basic_consume(
-            queue_name,
-            &format!("games-agent-{}", queue_name),
-            BasicConsumeOptions::default(),
-            FieldTable::default(),
-        )
-        .await
-        .unwrap();
-
-    info!("Listening on queue: {}", queue_name);
-    while let Some(delivery) = consumer.next().await {
-        debug!("Received event: {:?}", delivery);
-        let conn = conn.clone();
-        let channel = channel.clone();
-        tokio::spawn(on_message(
-            channel.clone(),
-            conn.clone(),
-            delivery.expect("error in consumer"),
-        ));
-    }
-}
 
 async fn on_match_created(
-    created_match: CreatedMatch,
+    created_match: gn_communicator::models::CreatedMatch,
     conn: Arc<RedisAdapterDefault>,
-    channel: Arc<Channel>,
 ) {
     debug!("Match created: {:?}", created_match);
 
@@ -104,7 +53,7 @@ async fn on_match_created(
 
     if created_match.ai {
         for player in created_match.ai_players {
-            let task = models::Task {
+            let task = gn_communicator::models::Task {
                 ai_level: 1,
                 game: created_match.game.clone(),
                 mode: created_match.mode.clone(),
@@ -118,22 +67,16 @@ async fn on_match_created(
                     .collect(),
             };
 
-            channel
-                .basic_publish(
-                    "",
-                    AI_QUEUE,
-                    BasicPublishOptions::default(),
-                    serde_json::to_vec(&task).unwrap().as_slice(),
-                    BasicProperties::default(),
-                )
-                .await
-                .unwrap();
+            communicator.create_ai_task(&task).await;
         }
         debug!("AI tasks created for match {:?}", created_match.read);
     }
 }
 
-async fn on_match_abrupt_close(reason: MatchAbrubtClose, conn: Arc<RedisAdapterDefault>) {
+async fn on_match_abrupt_close(
+    reason: gn_communicator::models::MatchAbrubtClose,
+    conn: Arc<RedisAdapterDefault>,
+) {
     debug!("Match closed abruptly: {:?}", reason);
 
     let match_ = conn
@@ -147,7 +90,7 @@ async fn on_match_abrupt_close(reason: MatchAbrubtClose, conn: Arc<RedisAdapterD
     }
 }
 
-async fn on_match_result(result: MatchResult, conn: Arc<RedisAdapterDefault>) {
+async fn on_match_result(result: gn_communicator::models::MatchResult, conn: Arc<RedisAdapterDefault>) {
     debug!("Match result: {:?}", result);
 
     let match_ = conn
@@ -171,7 +114,7 @@ async fn on_match_result(result: MatchResult, conn: Arc<RedisAdapterDefault>) {
 }
 
 async fn report_match_result(
-    result: MatchResult,
+    result: gn_communicator::models::MatchResult,
     active_match: ActiveMatchDB,
 ) -> Result<gn_ranking_client_rs::models::read::Match, Box<dyn std::error::Error>> {
     let request: gn_ranking_client_rs::models::create::Match =
@@ -181,7 +124,7 @@ async fn report_match_result(
 }
 
 async fn init_game_ranking(
-    created_game: GameServerCreateRequest,
+    created_game: gn_communicator::models::GameServerCreate,
 ) -> Result<gn_ranking_client_rs::models::read::Game, Box<dyn std::error::Error>> {
     debug!(
         "Initializing game at ranking server: {:?}",
@@ -196,7 +139,12 @@ async fn init_game_ranking(
             .ranking_conf
             .performances
             .into_iter()
-            .map(|x| x.into())
+            .map(|x| 
+                gn_ranking_client_rs::models::create::Performance {
+                    name: x.name,
+                    weight: x.weight,
+                }
+            )
             .collect(),
     };
     Ok(ranking_client.game_init(game).await?)
@@ -221,108 +169,59 @@ async fn save_game(
     Ok(server)
 }
 
-async fn listen_for_match_abrupt_close(channel: Arc<Channel>, conn: Arc<RedisAdapterDefault>) {
-    setup_queue_and_listen(
-        channel,
-        MATCH_ABRUPT_CLOSE_QUEUE,
-        conn,
-        |_, conn, delivery| async move {
-            delivery.ack(BasicAckOptions::default()).await.expect("ack");
-
-            let reason: MatchAbrubtClose = serde_json::from_slice(&delivery.data).unwrap();
-            on_match_abrupt_close(reason, conn.clone()).await;
-        },
-    )
-    .await;
-}
-
-async fn listen_for_match_result(channel: Arc<Channel>, conn: Arc<RedisAdapterDefault>) {
-    setup_queue_and_listen(
-        channel,
-        RESULT_MATCH_QUEUE,
-        conn,
-        |_, conn, delivery| async move {
-            delivery.ack(BasicAckOptions::default()).await.expect("ack");
-
-            let result: MatchResult = serde_json::from_slice(&delivery.data).unwrap();
-            on_match_result(result, conn.clone()).await;
-        },
-    )
-    .await;
-}
-
-async fn listen_for_match_created(channel: Arc<Channel>, conn: Arc<RedisAdapterDefault>) {
-    channel
-        .queue_declare(
-            AI_QUEUE,
-            QueueDeclareOptions::default(),
-            FieldTable::default(),
-        )
-        .await
-        .unwrap();
-
-    setup_queue_and_listen(
-        channel,
-        CREATE_MATCH_QUEUE,
-        conn,
-        |channel, conn, delivery| async move {
-            delivery.ack(BasicAckOptions::default()).await.expect("ack");
-
-            let created_match: CreatedMatch = serde_json::from_slice(&delivery.data).unwrap();
-            on_match_created(created_match, conn.clone(), channel).await;
-        },
-    )
-    .await;
-}
-
-async fn listen_for_game_created(channel: Arc<Channel>, conn: Arc<RedisAdapterDefault>) {
-    setup_queue_and_listen(
-        channel,
-        CREATE_GAME_QUEUE,
-        conn,
-        |channel, conn, delivery| async move {
-            let reply_to = match delivery.properties.reply_to() {
-                Some(reply_to) => reply_to.clone(),
-                None => {
-                    delivery
-                        .nack(BasicNackOptions::default())
-                        .await
-                        .expect("nack");
-                    return;
-                }
-            };
-            debug!("Received game created event: {:?}", delivery);
-            delivery.ack(BasicAckOptions::default()).await.expect("ack");
-
+async fn listen_for_match_abrupt_close(conn: Arc<RedisAdapterDefault>) {
+    communicator.on_match_abrupt_close(
+        move |close: gn_communicator::models::MatchAbrubtClose| 
+        {
             let conn = conn.clone();
-            let channel = channel.clone();
-
-            let created_game: GameServerCreateRequest =
-                serde_json::from_slice(&delivery.data).unwrap();
-            let game_id = save_game(created_game.clone().into(), conn.clone())
-                .await
-                .unwrap();
-
-            if let Err(err) = init_game_ranking(created_game).await {
-                error!("Error initializing game at ranking server: {:?}", err);
-            }
-
-            channel
-                .basic_publish(
-                    "",
-                    reply_to.as_str(),
-                    BasicPublishOptions::default(),
-                    game_id.as_bytes(),
-                    BasicProperties::default(),
-                )
-                .await
-                .unwrap();
-        },
-    )
-    .await;
+            on_match_abrupt_close(close, conn.clone())
+        }
+    ).await;
 }
 
-async fn listen_for_healthcheck(channel: Arc<Channel>, conn: Arc<RedisAdapterDefault>) {
+async fn listen_for_match_result(conn: Arc<RedisAdapterDefault>) {
+    communicator.on_match_result(
+        move |result: gn_communicator::models::MatchResult| 
+        {
+            let conn = conn.clone();
+            on_match_result(result, conn.clone())
+        }
+    ).await;
+}
+
+async fn listen_for_match_created(conn: Arc<RedisAdapterDefault>) {
+    communicator.on_match_created(
+        move |created_match: gn_communicator::models::CreatedMatch| 
+        {
+            let conn = conn.clone();
+            async move {
+                on_match_created(created_match, conn.clone()).await;
+            }
+        }
+    ).await;
+}
+
+async fn listen_for_game_created(conn: Arc<RedisAdapterDefault>) {
+    communicator.on_game_create(
+        move |created_game: gn_communicator::models::GameServerCreate| 
+        {
+            let conn = conn.clone();
+            async move {
+                let game_id = save_game(created_game.clone().into(), conn.clone())
+                    .await
+                    .unwrap();
+
+                if let Err(err) = init_game_ranking(created_game).await {
+                    error!("Error initializing game at ranking server: {:?}", err);
+                }
+
+                game_id
+            }
+        }
+    ).await;
+}
+
+async fn listen_for_healthcheck(conn: Arc<RedisAdapterDefault>) {
     let healthcheck = Arc::new(Mutex::new(HealthCheck::new(conn.clone())));
 
     {
@@ -333,19 +232,15 @@ async fn listen_for_healthcheck(channel: Arc<Channel>, conn: Arc<RedisAdapterDef
         });
     }
 
-    setup_queue_and_listen(channel, HEALTH_CHECK_QUEUE, conn, {
-        |_, _, delivery| {
+    communicator.on_health_check(
+        move |client_id: String| 
+        {
             let healthcheck = healthcheck.clone();
             async move {
-                debug!("Received healthcheck event: {:?}", delivery);
-                delivery.ack(BasicAckOptions::default()).await.expect("ack");
-
-                let client_id: String = std::string::String::from_utf8(delivery.data).unwrap();
                 healthcheck.lock().unwrap().refresh(client_id);
             }
         }
-    })
-    .await;
+    ).await;
 }
 
 #[tokio::main]
@@ -355,45 +250,34 @@ async fn main() {
         .finish();
     tracing::subscriber::set_global_default(subscriber).unwrap();
     let redis_url = std::env::var("REDIS_URL").expect("REDIS_URL must be set");
-    let amqp_url = std::env::var("AMQP_URL").expect("AMQP_URL must be set");
-    let amqp_connection = Connection::connect(&amqp_url, lapin::ConnectionProperties::default())
-        .await
-        .expect("Could not connect to AMQP server");
 
     let state = RedisAdapter::connect(&redis_url).unwrap();
     let connection = state.client.get_connection().unwrap();
     let state = Arc::new(state.with_publisher(RedisInfoPublisher::new(connection)));
 
-    let amqp_channel = Arc::new(amqp_connection.create_channel().await.unwrap());
-
     let listen_for_match_created = {
         let state = state.clone();
-        let channel = amqp_channel.clone();
-        tokio::spawn(listen_for_match_created(channel, state.clone()))
+        tokio::spawn(listen_for_match_created(state.clone()))
     };
 
     let listen_for_game_created = {
         let state = state.clone();
-        let channel = amqp_channel.clone();
-        tokio::spawn(listen_for_game_created(channel, state.clone()))
+        tokio::spawn(listen_for_game_created(state.clone()))
     };
 
     let listen_for_healthcheck = {
         let state = state.clone();
-        let channel = amqp_channel.clone();
-        tokio::spawn(listen_for_healthcheck(channel, state.clone()))
+        tokio::spawn(listen_for_healthcheck(state.clone()))
     };
 
     let listen_for_match_result = {
         let state = state.clone();
-        let channel = amqp_channel.clone();
-        tokio::spawn(listen_for_match_result(channel, state.clone()))
+        tokio::spawn(listen_for_match_result(state.clone()))
     };
 
-    let listen_for_match_abrupt_close= {
+    let listen_for_match_abrupt_close = {
         let state = state.clone();
-        let channel = amqp_channel.clone();
-        tokio::spawn(listen_for_match_abrupt_close(channel, state.clone()))
+        tokio::spawn(listen_for_match_abrupt_close(state.clone()))
     };
 
     listen_for_healthcheck.await.unwrap();
