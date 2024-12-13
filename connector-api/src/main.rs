@@ -1,11 +1,13 @@
 use std::sync::{Arc, Mutex};
 
-use gn_matchmaking_state_types::{DBSearcher, HostRequestDB};
 use gn_matchmaking_state::prelude::*;
+use gn_matchmaking_state_types::{DBSearcher, HostRequestDB};
 use handler::Handler;
+use lazy_static::lazy_static;
 use match_maker::MatchMaker;
-use models::{DirectConnect, Host, HostInfo, Search};
+use models::{Host, HostInfo, JoinPriv, JoinPub, Search};
 use rand::rngs::adapter;
+use serde_json::Value;
 use socketioxide::{
     extract::{Data, SocketRef},
     SocketIo,
@@ -21,7 +23,9 @@ mod handler;
 mod match_maker;
 mod models;
 
-static DEFAULT_HOST_ADDRESS: &str = "0.0.0.0:4000";
+lazy_static! {
+    static ref HOST_ADDR: String = option_env!("HOST_ADDR").unwrap().to_string();
+}
 
 fn setup_listeners(
     io: &SocketIo,
@@ -62,28 +66,34 @@ fn setup_listeners(
                     }
 
                     init_notify_on_match();
-                }
-            });
 
-            let disconnect_handler = handler.clone();
-            socket.on_disconnect(move |socket: SocketRef| {
-                info!("Socket.IO disconnected: {:?}", socket.id);
-                disconnect_handler.handle_disconnect();
+                    socket.on_disconnect(move |socket: SocketRef| {
+                        info!("Socket.IO disconnected: {:?}", socket.id);
+                        handler.remove_searcher().unwrap();
+                    });
+                }
             });
 
             let host_handler = handler.clone();
             socket.on("host", {
                 let init_notify_on_match = notify_on_match.clone();
                 move |socket: SocketRef, Data::<Host>(data)| async move {
-                    if let Err(err) = host_handler.handle_host(data).await {
-                        socket.emit("error", &err.to_string()).ok();
-                        return;
-                    }
-
-                    let host_info = HostInfo {
-                        host_id: host_handler.get_searcher_id().unwrap(),
+                    let host_info = match host_handler.handle_host(data).await {
+                        Ok(token) => HostInfo {
+                            host_id: host_handler.get_searcher_id().unwrap(),
+                            join_token: token,
+                        },
+                        Err(err) => {
+                            socket.emit("error", &err.to_string()).ok();
+                            return;
+                        }
                     };
+
                     init_notify_on_match();
+                    socket.on_disconnect(move |socket: SocketRef| {
+                        info!("Socket.IO disconnected: {:?}", socket.id);
+                        host_handler.remove_searcher().unwrap();
+                    });
                     socket.emit("host_info", &host_info).ok();
                 }
             });
@@ -98,11 +108,24 @@ fn setup_listeners(
             let join_handler = handler.clone();
             socket.on("join", {
                 let init_notify_on_match = notify_on_match.clone();
-                move |socket: SocketRef, Data::<DirectConnect>(data)| async move {
-                    if let Err(err) = join_handler.handle_join(data).await {
-                        socket.emit("error", &err.to_string()).ok();
-                        return;
+                move |socket: SocketRef, Data::<Value>(data)| async move {
+                    if data.get("join_token").is_some() {
+                        let join_data: JoinPriv = serde_json::from_value(data.clone()).unwrap();
+                        if let Err(err) = join_handler.handle_join_priv(join_data).await {
+                            socket.emit("error", &err.to_string()).ok();
+                            return;
+                        }
+                    } else {
+                        let join_data: JoinPub = serde_json::from_value(data.clone()).unwrap();
+                        if let Err(err) = join_handler.handle_join_pub(join_data).await {
+                            socket.emit("error", &err.to_string()).ok();
+                            return;
+                        }
                     }
+                    socket.on_disconnect(move |socket: SocketRef| {
+                        info!("Socket.IO disconnected: {:?}", socket.id);
+                        join_handler.remove_joiner().unwrap();
+                    });
                     init_notify_on_match();
                 }
             });
@@ -140,7 +163,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app = axum::Router::new().layer(cors).layer(layer);
 
-    let listener = tokio::net::TcpListener::bind(DEFAULT_HOST_ADDRESS)
+    let listener = tokio::net::TcpListener::bind(HOST_ADDR.as_str())
         .await
         .unwrap();
 

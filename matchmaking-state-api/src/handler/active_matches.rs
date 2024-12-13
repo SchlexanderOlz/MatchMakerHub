@@ -80,23 +80,8 @@ async fn get_write_token(
     filter.player = Some(validation._id.clone());
     filter.read = Some(read.clone());
 
-    let matches: Vec<_> = state
-        .all()
-        .map_err(|e| {
-            actix_web::error::ErrorInternalServerError(format!("Failed to fetch matches: {}", e))
-        })?
-        .filter_map(|m: ActiveMatchDB| {
-            let active_match: ActiveMatch = ActiveMatch::from(m.clone());
-            let filter = ActiveMatchFilter::default();
-
-            if active_match.matches(&filter) {
-                Some(m)
-            } else {
-                None
-            }
-        })
-        .collect();
-
+    let matches: Vec<ActiveMatchDB> =
+        super::filter::<_, ActiveMatchDB, _>((*state).clone(), &filter).await?;
     let write = matches
         .first()
         .ok_or_else(|| actix_web::error::ErrorNotFound("No active matches found".to_string()))?
@@ -106,4 +91,3 @@ async fn get_write_token(
 
     Ok(HttpResponse::Ok().body(write.clone()))
 }
-

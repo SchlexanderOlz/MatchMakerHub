@@ -18,7 +18,7 @@ services:
     depends_on:
       - redis
     environment:
-      - HOST_URL=0.0.0.0:4000
+      - HOST_ADDR=0.0.0.0:4000
       - REDIS_URL=redis://redis:6379
       - EZAUTH_URL=${EZAUTH_URL}
       - RANKING_URL=${RANKING_URL}

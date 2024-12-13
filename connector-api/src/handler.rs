@@ -1,24 +1,23 @@
 use ezauth::EZAUTHValidationResponse;
-use gn_matchmaking_state::{
-    adapters::{redis::RedisAdapterDefault, Gettable, Insertable, Removable, Updateable},
+use gn_matchmaking_state::adapters::{
+    redis::RedisAdapterDefault, Gettable, Insertable, Removable, Updateable,
 };
-use gn_matchmaking_state_types::{DBGameServer, DBSearcher, GameServer, HostRequest, HostRequestDB, HostRequestUpdate,
-        Searcher};
+use gn_matchmaking_state_types::{
+    DBGameServer, DBSearcher, GameServer, HostRequest, HostRequestDB, HostRequestUpdate, Searcher,
+};
 use rand::{distributions::Alphanumeric, Rng};
-use uuid::Uuid;
 use std::{
     f32::consts::E,
     sync::{Arc, Mutex},
     time::SystemTime,
 };
 use tracing::{debug, info};
+use uuid::Uuid;
 
 use axum::body::Bytes;
 use socketioxide::extract::SocketRef;
 
-use crate::{
-    models::{DirectConnect, Host, Match, Search},
-};
+use crate::models::{Host, JoinPriv, JoinPub, Match, Search};
 
 pub struct Handler {
     search: Mutex<Option<Search>>,
@@ -183,7 +182,7 @@ impl Handler {
     pub async fn handle_host(
         &self,
         data: Host,
-    ) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    ) -> Result<String, Box<dyn std::error::Error + 'static>> {
         let validation = self.authorize(&data.session_token).await?;
 
         let servers = self.check_for_active_servers(&data.game, &data.mode, &data.region);
@@ -195,6 +194,11 @@ impl Handler {
         }
 
         let search = data;
+        let join_token = if search.public {
+                String::new()
+            } else {
+                Uuid::new_v4().to_string()
+            };
 
         if self
             .state
@@ -211,7 +215,7 @@ impl Handler {
             mode: search.mode.clone(),
             game: search.game.clone(),
             region: search.region.clone(),
-            reserved_players: search.reserved_players.clone(),
+            join_token: join_token.clone(),
             joined_players: vec![validation._id.clone()],
             start_requested: false,
             min_players: servers.first().unwrap().min_players,
@@ -222,7 +226,7 @@ impl Handler {
         let uuid = self.state.insert(host_request).unwrap();
         debug!("Host request inserted with uuid: {}", uuid);
         self.search_id.lock().unwrap().replace(uuid);
-        Ok(())
+        Ok(join_token)
     }
 
     async fn authorize(
@@ -249,7 +253,10 @@ impl Handler {
                 email: random_email,
                 created_at: "2021-01-01T00:00:00.000Z".to_string(),
             };
-            self.ezauth_response.lock().unwrap().replace(validation.clone());
+            self.ezauth_response
+                .lock()
+                .unwrap()
+                .replace(validation.clone());
             return Ok(validation);
         }
 
@@ -264,26 +271,53 @@ impl Handler {
         Ok(validation)
     }
 
-    pub async fn handle_join(
+    pub async fn handle_join_priv(
         &self,
-        data: DirectConnect,
+        data: JoinPriv,
+    ) -> Result<(), Box<dyn std::error::Error + 'static>> {
+        if data.join_token.is_empty() {
+            return Err("Invalid join token".into());
+        }
+
+        let validation = self.authorize(&data.session_token).await?;
+
+        let host_request: HostRequestDB = self
+            .state
+            .all()
+            .unwrap()
+            .find(|x: &HostRequestDB| x.join_token == data.join_token)
+            .unwrap();
+
+        self.handle_join(&data.join_token, host_request, &validation)
+            .await
+    }
+
+    pub async fn handle_join_pub(
+        &self,
+        data: JoinPub,
     ) -> Result<(), Box<dyn std::error::Error + 'static>> {
         let validation = self.authorize(&data.session_token).await?;
 
         let host_request: HostRequestDB = self.state.get(&data.host_id)?;
+        self.handle_join("", host_request, &validation).await
+    }
 
+    async fn handle_join(
+        &self,
+        join_token: &str,
+        host_request: HostRequestDB,
+        validation: &ezauth::EZAUTHValidationResponse,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         if host_request.start_requested {
-            return Err("Match has already started".into());
+            return Err("Match has started".into());
         }
 
         if host_request.joined_players.len() == host_request.max_players as usize {
             return Err("Match is full".into());
         }
 
-        if !host_request.reserved_players.is_empty()
-            && !host_request.reserved_players.contains(&validation._id)
-        {
-            return Err("Player is not allowed to join".into());
+        if host_request.join_token != join_token {
+            return Err("Invalid join token".into());
         }
 
         if host_request.joined_players.contains(&validation._id) {
@@ -299,22 +333,40 @@ impl Handler {
             .as_mut()
             .unwrap()
             .push(validation._id.clone());
-        self.state.update(&data.host_id, update)?;
+        self.state.update(&host_request.uuid, update)?;
 
-        self.search_id.lock().unwrap().replace(data.host_id.clone());
+        self.search_id
+            .lock()
+            .unwrap()
+            .replace(host_request.uuid.clone());
 
         if host_request.joined_players.len() + 1 == host_request.max_players as usize {
-            self.start(&data.host_id).await?;
+            self.start(&host_request.uuid).await?;
         }
 
         Ok(())
     }
 
-    pub fn handle_disconnect(&self) {
+    pub fn remove_searcher(&self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(search_id) = self.search_id.lock().unwrap().as_deref() {
-            self.state.remove(search_id).unwrap();
+            self.state.remove(search_id)?;
         }
         *self.search.lock().unwrap() = None;
+        Ok(())
+    }
+
+    pub fn remove_joiner(&self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(host_id) = self.search_id.lock().unwrap().as_deref() {
+            let host_request: HostRequestDB = self.state.get(&host_id)?;
+            let mut update = HostRequestUpdate {
+                joined_players: Some(host_request.joined_players.clone()),
+                ..Default::default()
+            };
+            update.joined_players.as_mut().unwrap().retain(|x| *x != self.get_user_id().unwrap());
+            self.state.update(&host_id, update).unwrap();
+        }
+        *self.search.lock().unwrap() = None;
+        Ok(())
     }
 
     pub fn notify_match_found(&self, socket: &SocketRef, found_match: Match) {

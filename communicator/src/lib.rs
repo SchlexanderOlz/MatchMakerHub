@@ -1,11 +1,9 @@
 use std::{future::Future, sync::Arc};
 
-use gn_matchmaking_state::prelude::RedisAdapterDefault;
 use models::{CreateMatch, CreatedMatch, GameServerCreate, MatchAbrubtClose, MatchResult, Task};
 
 pub mod rabbitmq;
 pub mod models;
-pub mod healthcheck;
 
 pub trait MessageHandler<T, Fut>:  Fn(T) -> Fut + Send + Sync + 'static + Clone 
 {}

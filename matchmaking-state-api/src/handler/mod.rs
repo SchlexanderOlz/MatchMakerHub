@@ -21,17 +21,15 @@ async fn filter<T, D, F>(
     state: Arc<gn_matchmaking_state::adapters::redis::RedisAdapterDefault>,
     filter: &F,
 ) -> Result<Vec<T>, Error> 
-where T: Filter<F> + From<D>,
-      D: RedisOutputReader + RedisIdentifiable,
+where D: RedisOutputReader + RedisIdentifiable + Filter<F>,
+      T: From<D>
 {
     Ok(state.all().map_err(|e| {
         actix_web::error::ErrorInternalServerError(format!("Failed to fetch matches: {}", e))
     })?
     .filter_map(|m: D| {
-        let m: T = T::from(m);
-
         if m.matches(&filter) {
-            Some(m)
+            Some(m.into())
         } else {
             None
         }

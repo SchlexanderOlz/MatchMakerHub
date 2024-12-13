@@ -25,13 +25,19 @@ pub struct Host {
     pub region: String,
     pub game: String,
     pub mode: String,
-    pub reserved_players: Vec<String>,
+    pub public: bool,
 }
 
 #[derive(Deserialize)]
-pub struct DirectConnect {
+pub struct JoinPub {
     pub session_token: String,
     pub host_id: String,
+}
+
+#[derive(Deserialize)]
+pub struct JoinPriv {
+    pub session_token: String,
+    pub join_token: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -39,12 +45,11 @@ pub struct Match {
     pub address: String,
     pub read: String,
     pub write: String,
-    pub players: Vec<String>
+    pub players: Vec<String>,
 }
-
-
 
 #[derive(Serialize)]
 pub struct HostInfo {
     pub host_id: String,
+    pub join_token: String,
 }

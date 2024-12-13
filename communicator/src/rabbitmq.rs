@@ -15,7 +15,6 @@ use lapin::{
 use tracing::{debug, info};
 
 use crate::{
-    healthcheck::{self, HealthCheck},
     models::{CreateMatch, CreatedMatch, GameServerCreate, MatchAbrubtClose, MatchResult},
     MessageHandler,
 };

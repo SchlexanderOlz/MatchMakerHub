@@ -30,7 +30,7 @@ impl From<ActiveMatchDB> for ActiveMatch {
     }
 }
 
-impl Filter<ActiveMatchFilter> for ActiveMatch {
+impl Filter<ActiveMatchFilter> for gn_matchmaking_state_types::ActiveMatchDB {
     fn matches(&self, filter: &ActiveMatchFilter) -> bool {
         if let Some(game) = &filter.game {
             if self.game != *game {
@@ -63,7 +63,7 @@ impl Filter<ActiveMatchFilter> for ActiveMatch {
         }
 
         if let Some(player) = &filter.player {
-            if !self.players.contains(player) {
+            if !self.player_write.contains_key(player) {
                 return false;
             }
         }
@@ -122,7 +122,7 @@ impl From<gn_matchmaking_state_types::DBGameServer> for GameServer {
 }
 
 
-impl Filter<GameServerFilter> for GameServer {
+impl Filter<GameServerFilter> for gn_matchmaking_state_types::DBGameServer {
     fn matches(&self, filter: &GameServerFilter) -> bool {
         if let Some(region) = &filter.region {
             if self.region != *region {
@@ -175,7 +175,6 @@ pub struct HostRequest {
     pub mode: String,
     pub game: String,
     pub region: String,
-    pub invited_players: Vec<String>,
     pub joined_players: Vec<String>,
     pub start_requested: bool,
     pub min_players: u32,
@@ -189,7 +188,7 @@ pub struct HostRequestFilter {
     pub mode: Option<String>,
     pub game: Option<String>,
     pub region: Option<String>,
-    pub invited_players: Option<Vec<String>>,
+    pub is_public: Option<bool>,
     pub joined_players: Option<Vec<String>>,
     pub start_requested: Option<bool>,
     pub min_players: Option<u32>,
@@ -204,7 +203,6 @@ impl From<gn_matchmaking_state_types::HostRequestDB> for HostRequest {
             mode: hr.mode,
             game: hr.game,
             region: hr.region,
-            invited_players: hr.reserved_players,
             joined_players: hr.joined_players,
             start_requested: hr.start_requested,
             min_players: hr.min_players,
@@ -213,10 +211,16 @@ impl From<gn_matchmaking_state_types::HostRequestDB> for HostRequest {
     }
 }
 
-impl Filter<HostRequestFilter> for HostRequest {
+impl Filter<HostRequestFilter> for gn_matchmaking_state_types::HostRequestDB {
     fn matches(&self, filter: &HostRequestFilter) -> bool {
         if let Some(host_player_id) = &filter.host_player_id {
-            if self.host_player_id != *host_player_id {
+            if self.player_id != *host_player_id {
+                return false;
+            }
+        }
+
+        if let Some(is_public) = filter.is_public {
+            if self.join_token.is_empty() != is_public {
                 return false;
             }
         }
@@ -239,11 +243,6 @@ impl Filter<HostRequestFilter> for HostRequest {
             }
         }
 
-        if let Some(invited_players) = &filter.invited_players {
-            if self.invited_players != *invited_players {
-                return false;
-            }
-        }
 
         if let Some(joined_players) = &filter.joined_players {
             if self.joined_players != *joined_players {
