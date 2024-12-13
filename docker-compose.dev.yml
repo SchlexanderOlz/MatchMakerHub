@@ -54,7 +54,7 @@ services:
     volumes:
       - ./matchmaking-state:/usr/matchmaking-state
       - ../gn-ranking-client-rs:/gn-ranking-client-rs
-      - "./matchmaking-state-types:/usr/matchmaking-state-types"
+      - ./matchmaking-state-types:/usr/matchmaking-state-types
     restart: on-failure
     depends_on:
       - redis

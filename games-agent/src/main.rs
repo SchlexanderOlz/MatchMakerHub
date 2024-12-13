@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use async_once::AsyncOnce;
 use gn_communicator::rabbitmq::RabbitMQCommunicator;
 use gn_matchmaking_state::prelude::*;
 use gn_matchmaking_state_types::{ActiveMatch, ActiveMatchDB, DBGameServer, GameServer};
@@ -19,16 +20,10 @@ mod models;
 lazy_static! {
     static ref ranking_client: RankingClient =
         RankingClient::new(std::env::var("RANKING_API_KEY").unwrap().to_owned());
-    static ref communicator: RabbitMQCommunicator = {
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(RabbitMQCommunicator::connect(
-                std::env::var("AMQP_URL").unwrap().as_str(),
-            ))
-    };
+    static ref communicator: AsyncOnce<RabbitMQCommunicator> = AsyncOnce::new(
+        RabbitMQCommunicator::connect(option_env!("AMQP_URL").unwrap())
+    );
 }
-
-
 
 async fn on_match_created(
     created_match: gn_communicator::models::CreatedMatch,
@@ -67,7 +62,7 @@ async fn on_match_created(
                     .collect(),
             };
 
-            communicator.create_ai_task(&task).await;
+            communicator.get().await.create_ai_task(&task).await;
         }
         debug!("AI tasks created for match {:?}", created_match.read);
     }
@@ -90,7 +85,10 @@ async fn on_match_abrupt_close(
     }
 }
 
-async fn on_match_result(result: gn_communicator::models::MatchResult, conn: Arc<RedisAdapterDefault>) {
+async fn on_match_result(
+    result: gn_communicator::models::MatchResult,
+    conn: Arc<RedisAdapterDefault>,
+) {
     debug!("Match result: {:?}", result);
 
     let match_ = conn
@@ -139,12 +137,10 @@ async fn init_game_ranking(
             .ranking_conf
             .performances
             .into_iter()
-            .map(|x| 
-                gn_ranking_client_rs::models::create::Performance {
-                    name: x.name,
-                    weight: x.weight,
-                }
-            )
+            .map(|x| gn_ranking_client_rs::models::create::Performance {
+                name: x.name,
+                weight: x.weight,
+            })
             .collect(),
     };
     Ok(ranking_client.game_init(game).await?)
@@ -170,55 +166,63 @@ async fn save_game(
 }
 
 async fn listen_for_match_abrupt_close(conn: Arc<RedisAdapterDefault>) {
-    communicator.on_match_abrupt_close(
-        move |close: gn_communicator::models::MatchAbrubtClose| 
-        {
+    communicator
+        .get()
+        .await
+        .on_match_abrupt_close(move |close: gn_communicator::models::MatchAbrubtClose| {
             let conn = conn.clone();
             on_match_abrupt_close(close, conn.clone())
-        }
-    ).await;
+        })
+        .await;
 }
 
 async fn listen_for_match_result(conn: Arc<RedisAdapterDefault>) {
-    communicator.on_match_result(
-        move |result: gn_communicator::models::MatchResult| 
-        {
+    communicator
+        .get()
+        .await
+        .on_match_result(move |result: gn_communicator::models::MatchResult| {
             let conn = conn.clone();
             on_match_result(result, conn.clone())
-        }
-    ).await;
+        })
+        .await;
 }
 
 async fn listen_for_match_created(conn: Arc<RedisAdapterDefault>) {
-    communicator.on_match_created(
-        move |created_match: gn_communicator::models::CreatedMatch| 
-        {
-            let conn = conn.clone();
-            async move {
-                on_match_created(created_match, conn.clone()).await;
-            }
-        }
-    ).await;
+    communicator
+        .get()
+        .await
+        .on_match_created(
+            move |created_match: gn_communicator::models::CreatedMatch| {
+                let conn = conn.clone();
+                async move {
+                    on_match_created(created_match, conn.clone()).await;
+                }
+            },
+        )
+        .await;
 }
 
 async fn listen_for_game_created(conn: Arc<RedisAdapterDefault>) {
-    communicator.on_game_create(
-        move |created_game: gn_communicator::models::GameServerCreate| 
-        {
-            let conn = conn.clone();
-            async move {
-                let game_id = save_game(created_game.clone().into(), conn.clone())
-                    .await
-                    .unwrap();
+    communicator
+        .get()
+        .await
+        .on_game_create(
+            move |created_game: gn_communicator::models::GameServerCreate| {
+                let conn = conn.clone();
+                async move {
+                    let game_id = save_game(created_game.clone().into(), conn.clone())
+                        .await
+                        .unwrap();
 
-                if let Err(err) = init_game_ranking(created_game).await {
-                    error!("Error initializing game at ranking server: {:?}", err);
+                    if let Err(err) = init_game_ranking(created_game).await {
+                        error!("Error initializing game at ranking server: {:?}", err);
+                    }
+
+                    game_id
                 }
-
-                game_id
-            }
-        }
-    ).await;
+            },
+        )
+        .await;
 }
 
 async fn listen_for_healthcheck(conn: Arc<RedisAdapterDefault>) {
@@ -232,15 +236,16 @@ async fn listen_for_healthcheck(conn: Arc<RedisAdapterDefault>) {
         });
     }
 
-    communicator.on_health_check(
-        move |client_id: String| 
-        {
+    communicator
+        .get()
+        .await
+        .on_health_check(move |client_id: String| {
             let healthcheck = healthcheck.clone();
             async move {
                 healthcheck.lock().unwrap().refresh(client_id);
             }
-        }
-    ).await;
+        })
+        .await;
 }
 
 #[tokio::main]

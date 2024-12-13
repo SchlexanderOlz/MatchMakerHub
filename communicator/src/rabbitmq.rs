@@ -21,7 +21,6 @@ use crate::{
 };
 
 const CREATED_MATCH_QUEUE: &str = "match-created";
-const CREATE_MATCH_QUEUE: &str = "match-create-request";
 const CREATE_GAME_QUEUE: &str = "game-created";
 const MATCH_ABRUPT_CLOSE_QUEUE: &str = "match-abrupt-close";
 const HEALTH_CHECK_QUEUE: &str = "health-check";
@@ -265,7 +264,7 @@ impl super::Communicator for RabbitMQCommunicator {
         self.channel
             .basic_publish(
                 "",
-                CREATED_MATCH_QUEUE,
+                CREATE_MATCH_REQUEST_QUEUE,
                 BasicPublishOptions::default(),
                 &serde_json::to_vec(&match_request).unwrap(),
                 BasicProperties::default(),
@@ -291,7 +290,7 @@ impl super::Communicator for RabbitMQCommunicator {
         self.channel
             .basic_publish(
                 "",
-                CREATE_MATCH_QUEUE,
+                CREATED_MATCH_QUEUE,
                 BasicPublishOptions::default(),
                 &serde_json::to_vec(&created_match).unwrap(),
                 BasicProperties::default(),

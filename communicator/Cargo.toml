@@ -1,6 +1,6 @@
 [package]
 name = "gn-communicator"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Component for communication for game-night microservices"
 license = "MIT"

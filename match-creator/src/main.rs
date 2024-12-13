@@ -1,34 +1,21 @@
+use gn_communicator::Communicator;
 use gn_matchmaking_state_types::DBSearcher;
-use lapin::{
-    options::{BasicPublishOptions, QueueDeclareOptions},
-    types::FieldTable,
-    BasicProperties, Channel, Connection,
-};
-use reqwest;
 use std::{collections::HashMap, sync::Arc};
 use tokio::runtime::Runtime;
 use tracing::{debug, info, warn, Level};
 use tracing_subscriber::FmtSubscriber;
 
-use gn_matchmaking_state::models::{Match};
+use gn_matchmaking_state::models::Match;
 
 use gn_matchmaking_state::prelude::*;
 use serde::{Deserialize, Serialize};
 
 mod model;
 
-#[derive(Serialize)]
-struct NewMatch {
-    pub game: String,
-    pub players: Vec<String>,
-    pub ai_players: Vec<String>,
-    pub mode: String,
-    pub ai: bool,
-}
-
-const CREATE_QUEUE: &str = "match-create-request";
-
-fn handle_match(new_match: Match, channel: &Channel, conn: Arc<RedisAdapterDefault>) -> NewMatch {
+fn handle_match(
+    new_match: Match,
+    conn: Arc<RedisAdapterDefault>,
+) -> gn_communicator::models::CreateMatch {
     debug!("Matched players: {:?}", new_match);
 
     // TODO: Write the logic for the pool to look up the existence of the game (If needed. Else remove the pool)
@@ -51,7 +38,7 @@ fn handle_match(new_match: Match, channel: &Channel, conn: Arc<RedisAdapterDefau
         })
         .collect();
 
-    NewMatch {
+    gn_communicator::models::CreateMatch {
         game: new_match.game,
         players,
         ai_players,
@@ -69,22 +56,12 @@ async fn main() {
     let redis_url = std::env::var("REDIS_URL").expect("REDIS_URL must be set");
     let connector = RedisAdapter::connect(&redis_url).expect("Could not connect to Redis database");
 
-    let amqp_url = std::env::var("AMQP_URL").expect("AMQP_URL must be set");
-    let amqp_connection = Connection::connect(&amqp_url, lapin::ConnectionProperties::default())
-        .await
-        .expect("Could not connect to AMQP server");
-    let create_channel = Arc::new(amqp_connection.create_channel().await.unwrap());
-    create_channel
-        .queue_declare(
-            CREATE_QUEUE,
-            QueueDeclareOptions::default(),
-            FieldTable::default(),
-        )
-        .await
-        .unwrap();
-
     let redis_connection = connector.client.get_connection().unwrap();
     let connector = Arc::new(connector.with_publisher(RedisInfoPublisher::new(redis_connection)));
+
+    let amqp_url = std::env::var("AMQP_URL").expect("AMQP_URL must be set");
+    let communicator =
+        Arc::new(gn_communicator::rabbitmq::RabbitMQCommunicator::connect(&amqp_url).await);
 
     info!("Started pool auto-update");
     info!("Started match check");
@@ -92,23 +69,13 @@ async fn main() {
     let match_checker = connector.clone();
     connector.clone().on_match(move |new_match| {
         info!("New match: {:?}", new_match);
-        let create_channel = create_channel.clone();
 
         let connector = connector.clone();
 
-        let created_match = handle_match(new_match, &create_channel, connector.clone());
-
+        let created_match = handle_match(new_match, connector.clone());
+        let communicator = communicator.clone();
         tokio::spawn(async move {
-            create_channel
-                .basic_publish(
-                    "",
-                    CREATE_QUEUE,
-                    BasicPublishOptions::default(),
-                    &serde_json::to_vec(&created_match).unwrap(),
-                    BasicProperties::default(),
-                )
-                .await
-                .unwrap();
+            communicator.create_match(&created_match).await;
         });
     });
     info!("On match handler registered");
