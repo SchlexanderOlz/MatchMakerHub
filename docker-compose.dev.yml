@@ -11,7 +11,6 @@ services:
       - "4000:4000"
     volumes:
       - ./matchmaking-state:/usr/matchmaking-state
-      - ../gn-ranking-client-rs:/gn-ranking-client-rs
       - "./matchmaking-state-types:/usr/matchmaking-state-types"
       - "./ezauth:/usr/ezauth"
     restart: on-failure
@@ -53,7 +52,6 @@ services:
     command: cargo run
     volumes:
       - ./matchmaking-state:/usr/matchmaking-state
-      - ../gn-ranking-client-rs:/gn-ranking-client-rs
       - ./matchmaking-state-types:/usr/matchmaking-state-types
     restart: on-failure
     depends_on:
@@ -79,7 +77,6 @@ services:
     volumes:
       - "./matchmaking-state-types:/usr/matchmaking-state-types"
       - ./matchmaking-state:/usr/matchmaking-state
-      - ../gn-ranking-client-rs:/gn-ranking-client-rs
       - "./ezauth:/usr/ezauth"
     depends_on:
       - redis
