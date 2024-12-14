@@ -2,6 +2,10 @@
 name = "ezauth"
 version = "0.1.0"
 edition = "2021"
+description = "Client for the ezauth-user service"
+license = "MIT"
+
+
 
 [dependencies]
 axum = "0.7.9"
