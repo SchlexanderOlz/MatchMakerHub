@@ -21,7 +21,7 @@ reqwest = { version = "0.12.9", features = ["json", "blocking"] }
 uuid = { version = "1.11.0", features = ["v4"] }
 gn-ranking-client-rs = { version = "0.1.0" }
 gn-matchmaking-state-types = { version = "0.1.1" }
-ezauth = { path = "../ezauth" }
+ezauth = { version = "0.1.0" }
 
 [dev-dependencies]
 rust_socketio = { version = "*", features = ["async"] }
@@ -29,7 +29,3 @@ futures-util = "0.3.30"
 
 [profile.release]
 opt-level = 3
-
-[patch.crates-io]
-gn-matchmaking-state = { path = "../matchmaking-state" }
-gn-matchmaking-state-types = { path = "../matchmaking-state-types" }

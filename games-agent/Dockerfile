@@ -2,6 +2,8 @@ FROM rust:latest
 
 WORKDIR /usr/
 
+ARG AMQP_URL
+
 RUN USER=root cargo new --bin games-agent
 WORKDIR /usr/games-agent
 

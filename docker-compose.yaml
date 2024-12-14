@@ -4,6 +4,8 @@ services:
   connector-api:
     build:
       context: ./connector-api
+      args:
+        - HOST_ADDR=0.0.0.0:4000
     container_name: connector-api
     command: connector-api
     ports:
@@ -11,8 +13,8 @@ services:
     restart: on-failure
     depends_on:
       - redis
+      - rabbitmq
     environment:
-      - HOST_ADDR=0.0.0.0:4000
       - REDIS_URL=redis://redis:6379
       - EZAUTH_URL=${EZAUTH_URL}
       - RANKING_URL=${RANKING_URL}
@@ -28,6 +30,7 @@ services:
     restart: on-failure
     depends_on:
       - redis
+      - rabbitmq
     environment:
       - REDIS_URL=redis://redis:6379
       - AMQP_URL=${AMQP_URL}
@@ -37,11 +40,14 @@ services:
   games-agent:
     build:
       context: ./games-agent
+      args:
+        - AMQP_URL=${AMQP_URL}
     container_name: games-agent
     command: games-agent
     restart: on-failure
     depends_on:
       - redis
+      - rabbitmq
     environment:
       - REDIS_URL=redis://redis:6379
       - AMQP_URL=${AMQP_URL}

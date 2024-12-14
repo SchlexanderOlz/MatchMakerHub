@@ -16,6 +16,7 @@ services:
     restart: on-failure
     depends_on:
       - redis
+      - rabbitmq
     environment:
       - HOST_ADDR=0.0.0.0:4000
       - REDIS_URL=redis://redis:6379
@@ -38,6 +39,7 @@ services:
     restart: on-failure
     depends_on:
       - redis
+      - rabbitmq
     environment:
       - REDIS_URL=redis://redis:6379
       - AMQP_URL=${AMQP_URL}
@@ -56,6 +58,7 @@ services:
     restart: on-failure
     depends_on:
       - redis
+      - rabbitmq
     environment:
       - REDIS_URL=redis://redis:6379
       - AMQP_URL=${AMQP_URL}

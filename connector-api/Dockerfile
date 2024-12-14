@@ -1,5 +1,7 @@
 FROM rust:latest
 
+ARG HOST_ADDR
+
 WORKDIR /usr/
 
 RUN USER=root cargo new --bin connector-api

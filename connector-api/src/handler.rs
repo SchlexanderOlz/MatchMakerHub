@@ -11,13 +11,15 @@ use std::{
     sync::{Arc, Mutex},
     time::SystemTime,
 };
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use axum::body::Bytes;
 use socketioxide::extract::SocketRef;
 
 use crate::models::{Host, JoinPriv, JoinPub, Match, Search};
+
+const DEFAULT_ELO: u32 = 1250;
 
 pub struct Handler {
     search: Mutex<Option<Search>>,
@@ -61,19 +63,28 @@ impl Handler {
     }
 
     #[inline]
-    fn get_elo(
+    async fn get_elo(
         &self,
         validation: &ezauth::EZAUTHValidationResponse,
         game: &str,
         mode: &str,
     ) -> Result<u32, Box<dyn std::error::Error + 'static>> {
         #[cfg(disable_elo)]
-        return Ok(42);
+        return Ok(DEFAULT_ELO);
         #[cfg(not(disable_elo))]
-        return Ok(self
-            .ranking_client
-            .player_stars(&validation._id, game, mode)
-            .await?);
+        return Ok(
+            match self
+                .ranking_client
+                .player_stars(&validation._id, game, mode)
+                .await
+            {
+                Ok(stars) => stars as u32,
+                Err(e) => {
+                    warn!("Failed to get player stars: {:?}", e);
+                    DEFAULT_ELO
+                }
+            },
+        );
     }
 
     #[inline]
@@ -105,7 +116,7 @@ impl Handler {
             return Err("No such server online".into());
         }
 
-        let elo = self.get_elo(&validation, &data.game, &data.mode)?;
+        let elo = self.get_elo(&validation, &data.game, &data.mode).await?;
 
         let search = data;
 
@@ -195,10 +206,10 @@ impl Handler {
 
         let search = data;
         let join_token = if search.public {
-                String::new()
-            } else {
-                Uuid::new_v4().to_string()
-            };
+            String::new()
+        } else {
+            Uuid::new_v4().to_string()
+        };
 
         if self
             .state
@@ -362,7 +373,11 @@ impl Handler {
                 joined_players: Some(host_request.joined_players.clone()),
                 ..Default::default()
             };
-            update.joined_players.as_mut().unwrap().retain(|x| *x != self.get_user_id().unwrap());
+            update
+                .joined_players
+                .as_mut()
+                .unwrap()
+                .retain(|x| *x != self.get_user_id().unwrap());
             self.state.update(&host_id, update).unwrap();
         }
         *self.search.lock().unwrap() = None;
