@@ -1,6 +1,7 @@
+use async_recursion::async_recursion;
 use futures_lite::{Future, StreamExt};
 use serde::Deserialize;
-use std::sync::{Arc, Mutex};
+use std::{sync::{Arc, Mutex}, time::Duration};
 
 use gn_matchmaking_state_types::GameServer;
 use lapin::{
@@ -12,7 +13,7 @@ use lapin::{
     types::FieldTable,
     BasicProperties, Channel, Connection,
 };
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 use crate::{
     models::{CreateMatch, CreatedMatch, GameServerCreate, MatchAbrubtClose, MatchResult},
@@ -67,12 +68,22 @@ pub struct RabbitMQCommunicator {
     uuid: String,
 }
 
+#[async_recursion]
+async fn try_connect(amqp_url: &str) -> Connection {
+    match Connection::connect(&amqp_url, lapin::ConnectionProperties::default())
+            .await {
+                Ok(res) => res,
+                Err(err) => {
+                    error!("Could not connect to rabbitmq server: {:?}", err);
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    try_connect(amqp_url).await
+                }
+            }
+}
+
 impl RabbitMQCommunicator {
     pub async fn connect(amqp_url: &str) -> Self {
-        let amqp_connection =
-            Connection::connect(&amqp_url, lapin::ConnectionProperties::default())
-                .await
-                .expect("Could not connect to AMQP server");
+        let amqp_connection = try_connect(amqp_url).await;
 
         let channel = Arc::new(
             amqp_connection

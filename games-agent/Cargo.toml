@@ -18,7 +18,7 @@ chrono = "0.4.38"
 gn-ranking-client-rs = { version = "0.1.0" }
 lazy_static = "1.5.0"
 itertools = "0.13.0"
-gn-communicator = { version = "0.1.1" }
+gn-communicator = { version = "0.1.2" }
 async_once = "0.2.6"
 
 [profile.release]
