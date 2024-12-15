@@ -52,7 +52,7 @@ async fn on_match_created(
                 ai_level: 1,
                 game: created_match.game.clone(),
                 mode: created_match.mode.clone(),
-                address: created_match.url_priv.clone(),
+                address: created_match.url_pub.clone(),
                 read: created_match.read.clone(),
                 write: created_match.player_write.get(&player).unwrap().clone(),
                 players: created_match
