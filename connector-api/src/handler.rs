@@ -21,6 +21,8 @@ use crate::models::{Host, JoinPriv, JoinPub, Match, Search};
 
 const DEFAULT_ELO: u32 = 1250;
 
+/// The `Handler` struct manages matchmaking operations, including searching for matches,
+/// hosting matches, joining matches, and starting matches. It interacts with a redis-database for state management and an external ranking client for player ELO ratings.
 pub struct Handler {
     search: Mutex<Option<Search>>,
     state: Arc<RedisAdapterDefault>,
@@ -31,6 +33,16 @@ pub struct Handler {
 }
 
 impl Handler {
+    /// Creates a new `Handler` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `state` - An `Arc` containing the `RedisAdapterDefault` instance.
+    /// * `ranking_client` - An `Arc` containing the `RankingClient` instance.
+    ///
+    /// # Returns
+    ///
+    /// A new `Handler` instance.
     pub fn new(
         state: Arc<RedisAdapterDefault>,
         ranking_client: Arc<gn_ranking_client_rs::RankingClient>,
@@ -48,11 +60,21 @@ impl Handler {
         }
     }
 
+    /// Retrieves the searcher ID if available.
+    ///
+    /// # Returns
+    ///
+    /// An `Option` containing the searcher ID.
     #[inline]
     pub fn get_searcher_id(&self) -> Option<String> {
         self.search_id.lock().unwrap().clone()
     }
 
+    /// Retrieves the user ID from the EZAUTH response if available.
+    ///
+    /// # Returns
+    ///
+    /// An `Option` containing the user ID.
     #[inline]
     pub fn get_user_id(&self) -> Option<String> {
         self.ezauth_response
@@ -62,6 +84,17 @@ impl Handler {
             .map(|x| x._id.clone())
     }
 
+    /// Retrieves the ELO rating for a player.
+    ///
+    /// # Arguments
+    ///
+    /// * `validation` - A reference to the `EZAUTHValidationResponse`.
+    /// * `game` - The game name.
+    /// * `mode` - The game mode.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the ELO rating or an error.
     #[inline]
     async fn get_elo(
         &self,
@@ -87,6 +120,17 @@ impl Handler {
         );
     }
 
+    /// Checks for active game servers in the redis-database that match the specified criteria.
+    ///
+    /// # Arguments
+    ///
+    /// * `game` - The game name.
+    /// * `mode` - The game mode.
+    /// * `region` - The game region.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `DBGameServer` instances that match the criteria.
     #[inline]
     fn check_for_active_servers(&self, game: &str, mode: &str, region: &str) -> Vec<DBGameServer> {
         self.state
@@ -101,6 +145,15 @@ impl Handler {
             .collect()
     }
 
+    /// Handles a search request for a match.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The search data.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or failure.
     pub async fn handle_search(
         &self,
         data: Search,
@@ -148,6 +201,11 @@ impl Handler {
         Ok(())
     }
 
+    /// Handles a request to start a match. A host-request hast to be registered befor this can be called.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or failure.
     pub async fn handle_start(&self) -> Result<(), Box<dyn std::error::Error + 'static>> {
         let validation = self.ezauth_response.lock().unwrap().clone();
 
@@ -190,6 +248,15 @@ impl Handler {
         Ok(())
     }
 
+    /// Handles a request to host a match.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The host data.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the join token or an error.
     pub async fn handle_host(
         &self,
         data: Host,
@@ -240,6 +307,15 @@ impl Handler {
         Ok(join_token)
     }
 
+    /// Get the user-information from ezauth using the session token.
+    ///
+    /// # Arguments
+    ///
+    /// * `session_token` - The session token.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the `EZAUTHValidationResponse` or an error.
     async fn authorize(
         &self,
         session_token: &str,
@@ -282,6 +358,15 @@ impl Handler {
         Ok(validation)
     }
 
+    /// Handles a request to join a private match.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The join data.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or failure.
     pub async fn handle_join_priv(
         &self,
         data: JoinPriv,
@@ -303,6 +388,15 @@ impl Handler {
             .await
     }
 
+    /// Handles a request to join a public match.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The join data.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or failure.
     pub async fn handle_join_pub(
         &self,
         data: JoinPub,
@@ -313,6 +407,17 @@ impl Handler {
         self.handle_join("", host_request, &validation).await
     }
 
+    /// Handles the common logic for joining a match.
+    ///
+    /// # Arguments
+    ///
+    /// * `join_token` - The join token.
+    /// * `host_request` - The host request data.
+    /// * `validation` - The EZAUTH validation response.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or failure.
     async fn handle_join(
         &self,
         join_token: &str,
@@ -358,6 +463,11 @@ impl Handler {
         Ok(())
     }
 
+    /// Removes the current searcher from the state.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or failure.
     pub fn remove_searcher(&self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(search_id) = self.search_id.lock().unwrap().as_deref() {
             self.state.remove(search_id)?;
@@ -366,6 +476,11 @@ impl Handler {
         Ok(())
     }
 
+    /// Removes the current joiner from the state.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or failure.
     pub fn remove_joiner(&self) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(host_id) = self.search_id.lock().unwrap().as_deref() {
             let host_request: HostRequestDB = self.state.get(&host_id)?;
@@ -384,6 +499,12 @@ impl Handler {
         Ok(())
     }
 
+    /// Notifies the client that a match has been found.
+    ///
+    /// # Arguments
+    ///
+    /// * `socket` - A reference to the `SocketRef`.
+    /// * `found_match` - The match data.
     pub fn notify_match_found(&self, socket: &SocketRef, found_match: Match) {
         socket.emit("match", &found_match).unwrap();
     }

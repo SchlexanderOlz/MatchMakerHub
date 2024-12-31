@@ -1,7 +1,10 @@
 use async_recursion::async_recursion;
 use futures_lite::{Future, StreamExt};
 use serde::Deserialize;
-use std::{sync::{Arc, Mutex}, time::Duration};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use gn_matchmaking_state_types::GameServer;
 use lapin::{
@@ -63,6 +66,8 @@ where
     }
 }
 
+/// Communicator implementation for RabbitMQ
+/// Uses lapin to communicate over AMQP-Messages and Channels
 pub struct RabbitMQCommunicator {
     channel: Arc<Channel>,
     uuid: String,
@@ -70,18 +75,36 @@ pub struct RabbitMQCommunicator {
 
 #[async_recursion]
 async fn try_connect(amqp_url: &str) -> Connection {
-    match Connection::connect(&amqp_url, lapin::ConnectionProperties::default())
-            .await {
-                Ok(res) => res,
-                Err(err) => {
-                    error!("Could not connect to rabbitmq server: {:?}", err);
-                    tokio::time::sleep(Duration::from_secs(5)).await;
-                    try_connect(amqp_url).await
-                }
-            }
+    match Connection::connect(&amqp_url, lapin::ConnectionProperties::default()).await {
+        Ok(res) => res,
+        Err(err) => {
+            error!("Could not connect to rabbitmq server: {:?}", err);
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            try_connect(amqp_url).await
+        }
+    }
 }
 
 impl RabbitMQCommunicator {
+    /// Connects to the AMQP server and creates a new instance of the struct.
+    ///
+    /// # Arguments
+    ///
+    /// * `amqp_url` - A string slice that holds the URL of the AMQP server.
+    ///
+    /// # Returns
+    ///
+    /// A new instance of the struct with an established AMQP connection and a created channel.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if it fails to create a channel.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let connection = RabbitMQCommunicator::connect("amqp://localhost:5672").await;
+    /// ```
     pub async fn connect(amqp_url: &str) -> Self {
         let amqp_connection = try_connect(amqp_url).await;
 
@@ -117,7 +140,8 @@ impl super::Communicator for RabbitMQCommunicator {
                     callback(reason).await;
                 }
             },
-        ).await;
+        )
+        .await;
     }
 
     async fn on_game_create<F, Fut>(&self, callback: F)
@@ -163,7 +187,8 @@ impl super::Communicator for RabbitMQCommunicator {
                         .unwrap();
                 }
             },
-        ).await;
+        )
+        .await;
     }
 
     async fn on_match_created<F, Fut>(&self, callback: F)
@@ -185,7 +210,8 @@ impl super::Communicator for RabbitMQCommunicator {
                     callback(created_match).await;
                 }
             },
-        ).await;
+        )
+        .await;
     }
 
     async fn on_match_result<F, Fut>(&self, callback: F)
@@ -201,7 +227,8 @@ impl super::Communicator for RabbitMQCommunicator {
                 let result: MatchResult = serde_json::from_slice(&delivery.data).unwrap();
                 callback(result).await;
             }
-        }).await;
+        })
+        .await;
     }
 
     async fn on_match_create<F, Fut>(&self, callback: F)
@@ -221,7 +248,8 @@ impl super::Communicator for RabbitMQCommunicator {
                     callback(result).await;
                 }
             },
-        ).await;
+        )
+        .await;
     }
 
     async fn create_game(
@@ -245,15 +273,18 @@ impl super::Communicator for RabbitMQCommunicator {
             .await
             .unwrap();
 
-        self.channel.basic_publish(
-            "",
-            CREATE_GAME_QUEUE,
-            BasicPublishOptions::default(),
-            &serde_json::to_vec(&game_server).unwrap(),
-            BasicProperties::default()
-                .with_reply_to(reply_to.name().clone())
-                .with_correlation_id(uuid::Uuid::new_v4().to_string().into()),
-        ).await.unwrap();
+        self.channel
+            .basic_publish(
+                "",
+                CREATE_GAME_QUEUE,
+                BasicPublishOptions::default(),
+                &serde_json::to_vec(&game_server).unwrap(),
+                BasicProperties::default()
+                    .with_reply_to(reply_to.name().clone())
+                    .with_correlation_id(uuid::Uuid::new_v4().to_string().into()),
+            )
+            .await
+            .unwrap();
 
         while let Some(delivery) = consumer.next().await {
             let delivery = delivery.unwrap();
