@@ -247,7 +247,7 @@ mod tests {
             region: "eu".to_string(),
             game: "SchnapsenTest".to_string(),
             mode: "duo".to_string(),
-            ai: false,
+            ai: None,
         };
 
         socket
@@ -313,7 +313,7 @@ mod tests {
             region: "eu".to_string(),
             game: "Schnapsen".to_string(),
             mode: "duo".to_string(),
-            ai: false,
+            ai: None,
         };
 
         let search = make_search();

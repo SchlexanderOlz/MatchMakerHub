@@ -1,5 +1,6 @@
 -- Lua script to find matches and publish to a channel
 local searcher_keys = redis.call('KEYS', '*:searchers')
+local ai_players = redis.call('KEYS', '*:ai_players')
 
 local max_elo_diff = 10000 -- TODO: Change this to the actuall value found in the config struct
 
@@ -13,7 +14,7 @@ local function can_play_together(players)
             return false
         end
 
-        if tonumber(redis.call('GET', player .. ':ai')) == 1 then
+        if redis.call('GET', player .. ':ai') ~= nil then
             return false
         end
 
@@ -29,7 +30,7 @@ local function can_play_together(players)
                 return false
             end
 
-            if tonumber(redis.call('GET', other .. ':ai')) == 1 then
+            if redis.call('GET', other .. ':ai') ~= nil then
                 return false
             end
 
@@ -74,16 +75,47 @@ end
 
 
 local function handle_match(region, players)
-    publish_new_match(region, players, redis.call('GET', players[1] .. ':mode'), redis.call('GET', players[1] .. ':game'), redis.call('GET', players[1] .. ':ai'))
+    publish_new_match(region, players, redis.call('GET', players[1] .. ':mode'), redis.call('GET', players[1] .. ':game'), redis.call('GET', players[1] .. ':ai') ~= nil and 1 or 0)
 end
 
 
-local function fill_with_ai(players, max_player_count)
-    for j = #players + 1, max_player_count do
-        local player = players[1]
-        local ai = redis.sha1hex(player .. tostring(players)) ..
-            "-ai@" .. redis.call('GET', player .. ":game") .. "-" .. redis.call('GET', player .. ":mode")
-        table.insert(players, ai)
+local function fill_with_ai(players, max_player_count, preferred_ai)
+    preferred_ai = preferred_ai or '*'
+    local game = redis.call('GET', players[1] .. ':game')
+    local mode = redis.call('GET', players[1] .. ':mode')
+
+    local eligable_ai = {}
+
+    if preferred_ai ~= '*' then
+        for j = 1, #ai_players do
+            local ai_player = ai_players[j]
+
+            if redis.call('GET', ai_player .. ":display_name") == preferred_ai then
+                table.insert(eligable_ai, ai_player)
+                break
+            end
+        end
+    else
+        for j = 1, #ai_players do
+            local ai_player = ai_players[j]
+            if redis.call('GET', ai_player .. ":game") == game and redis.call('GET', ai_player .. ":mode") == mode then
+                table.insert(eligable_ai, ai_player)
+            end
+        end
+    end
+
+
+    if #eligable_ai == 0 then
+        return
+    end
+
+
+    for i = #players + 1, max_player_count do
+        math.randomseed(redis.call('TIME')[1])
+
+        local ai_player = eligable_ai[math.random(#eligable_ai)]
+        local ai_id = redis.call('GET', ai_player .. ":display_name")
+        table.insert(players, ai_id)
     end
 end
 
@@ -92,18 +124,18 @@ local function check_for_ai_search(player)
         return false
     end
 
-    if tonumber(redis.call('GET', player .. ':ai')) == 0 then
+    if not redis.call('GET', player .. ':ai') then
         return false
     end
 
-
-
     local players = { player }
+    local max_players = tonumber(redis.call('GET', player .. ':max_players'))
 
-    fill_with_ai(players, redis.call('GET', player .. ':max_players'))
+    fill_with_ai(players, max_players, redis.call('GET', player .. ':ai'))
 
-
-    handle_match(redis.call('GET', player .. ':region'), players)
+    if #players == max_players then
+        handle_match(redis.call('GET', player .. ':region'), players)
+    end
 end
 
 -- Match all ai players
@@ -150,11 +182,16 @@ for i = 1, #searcher_keys do
             end
 
             if all_fill_with_ai then
-                for _, player in ipairs(players) do
-                    redis.call('SET', player .. ':ai', 1)
+                fill_with_ai(players, max_player_count)
+
+                if #players ~= max_player_count then
+                    return
                 end
 
-                fill_with_ai(players, max_player_count)
+                for _, player in ipairs(players) do
+                    redis.call('SET', player .. ':ai', '*')
+                end
+
                 handle_match(region, players)
             end
         end

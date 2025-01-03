@@ -9,7 +9,7 @@ edition = "2021"
 tokio = { version = "1.38.1", features = ["rt", "macros", "rt-multi-thread"] }
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
-gn-matchmaking-state = { version = "0.1.9" }
+gn-matchmaking-state = { version = "0.1.11" }
 gn-matchmaking-state-types = { version = "0.1.1" }
 tower-http = { version = "0.6.1", features = ["full"] }
 tower = "0.5.1"
@@ -18,7 +18,7 @@ chrono = "0.4.38"
 gn-ranking-client-rs = { version = "0.1.0" }
 lazy_static = "1.5.0"
 itertools = "0.13.0"
-gn-communicator = { version = "0.1.2" }
+gn-communicator = { version = "0.1.5" }
 async_once = "0.2.6"
 
 [profile.release]
@@ -27,3 +27,6 @@ opt-level = 3
 [build-dependencies]
 dotenv = "0.15"
 
+[patch.crates-io]
+gn-matchmaking-state-types = { path = "../matchmaking-state-types" }
+gn-communicator = { path = "../communicator" }

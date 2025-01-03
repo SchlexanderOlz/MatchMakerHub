@@ -131,6 +131,23 @@ impl_redis_reader_primitive!(
     bool, i8, i16, i32, i64, isize, u8, u16, u32, u64, f32, f64, String, usize
 );
 
+impl<T> RedisInsertWriter for Option<T> 
+where T: RedisInsertWriter {
+    fn write(&self, pipe: &mut redis::Pipeline, base_key: &str) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(val) = self {
+            val.write(pipe, base_key)?;
+        }
+        Ok(())
+    }
+}
+
+impl<T> RedisOutputReader for Option<T> 
+where T: RedisOutputReader {
+    fn read(conn: &mut Connection, base_key: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(T::read(conn, base_key).ok())
+    }
+}
+
 impl RedisInsertWriter for SystemTime {
     fn write(
         &self,

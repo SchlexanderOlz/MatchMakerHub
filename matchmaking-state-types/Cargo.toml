@@ -8,7 +8,7 @@ license = "MIT"
 
 
 [dependencies]
-gn-matchmaking-state = { version = "0.1.10", features = ["redis"] }
+gn-matchmaking-state = { version = "0.1.11", features = ["redis"] }
 gn-redisadapter-derive = { version = "0.1.2" }
 serde = { version = "1.0.215", features = ["derive"] }
 

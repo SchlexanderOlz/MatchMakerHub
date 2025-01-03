@@ -2,11 +2,11 @@ use async_recursion::async_recursion;
 use futures_lite::{Future, StreamExt};
 use serde::Deserialize;
 use std::{
+    collections::HashMap,
     sync::{Arc, Mutex},
     time::Duration,
 };
 
-use gn_matchmaking_state_types::GameServer;
 use lapin::{
     message::Delivery,
     options::{
@@ -23,17 +23,9 @@ use crate::{
     MessageHandler,
 };
 
-const CREATED_MATCH_QUEUE: &str = "match-created";
-const CREATE_GAME_QUEUE: &str = "game-created";
-const MATCH_ABRUPT_CLOSE_QUEUE: &str = "match-abrupt-close";
-const HEALTH_CHECK_QUEUE: &str = "health-check";
-const RESULT_MATCH_QUEUE: &str = "match-result";
-const AI_QUEUE: &str = "ai-task-generate-request";
-const CREATE_MATCH_REQUEST_QUEUE: &str = "match-create-request";
-
 async fn setup_queue_and_listen<F, Fut>(channel: Arc<Channel>, queue_name: &str, on_message: F)
 where
-    F: Fn(Arc<Channel>, Delivery) -> Fut,
+    F: Fn(Arc<Channel>, Delivery) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = ()> + Send + Sync + 'static,
 {
     channel
@@ -56,14 +48,16 @@ where
         .unwrap();
 
     info!("Listening on queue: {}", queue_name);
-    while let Some(delivery) = consumer.next().await {
-        debug!("Received event: {:?}", delivery);
-        let channel = channel.clone();
-        tokio::spawn(on_message(
-            channel.clone(),
-            delivery.expect("error in consumer"),
-        ));
-    }
+    tokio::spawn(async move {
+        while let Some(delivery) = consumer.next().await {
+            debug!("Received event: {:?}", delivery);
+            let channel = channel.clone();
+            tokio::spawn(on_message(
+                channel.clone(),
+                delivery.expect("error in consumer"),
+            ));
+        }
+    });
 }
 
 /// Communicator implementation for RabbitMQ
@@ -71,6 +65,7 @@ where
 pub struct RabbitMQCommunicator {
     channel: Arc<Channel>,
     uuid: String,
+    queues: HashMap<String, HashMap<String, String>>,
 }
 
 #[async_recursion]
@@ -118,7 +113,63 @@ impl RabbitMQCommunicator {
         Self {
             channel,
             uuid: uuid::Uuid::new_v4().to_string(),
+            queues: Self::load_default_queues(),
         }
+    }
+
+    fn load_default_queues() -> HashMap<String, HashMap<String, String>> {
+        let content = include_str!("../queues.yml");
+        serde_yaml::from_str(&content).expect("Failed to parse routes file")
+    }
+
+    /// Get queue name
+    /// # Arguments
+    ///
+    /// * `name` - A string slice that holds the type of which the queue is. (e.g. "match" or "game")
+    ///
+    /// * `action` - A string slice that holds the action that is performed on the queue. (e.g. "created" or "result")
+    fn get_queue_name(&self, name: &str, action: &str) -> &str {
+        self.queues
+            .get(name)
+            .expect(format!("Queue {} not found", name).as_str())
+            .get(action)
+            .expect(format!("Action {} not found", action).as_str())
+    }
+
+    /// Use a differing queue-configuration file from the default config 'queues.yml'
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - A string slice that holds the path to the file.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let communicator = RabbitMQCommunicator::connect("amqp://localhost:5672").await;
+    /// communicator.load_queues("custom_queues.yml");
+    /// ```
+    ///
+    /// # Default Queues
+    /// ```yaml
+    /// match:
+    ///  created: "match-created"
+    ///  result: "match-result"
+    ///  close: "match-abrupt-close"
+    ///  create: "match-create-request"
+    ///
+    /// game:
+    ///   register: "game-created"
+    ///
+    /// health_check:
+    ///   check: "health-check"
+    ///
+    /// ai:
+    ///   create_task: "ai-task-generate-request"
+    ///   register: "ai-register"
+    /// ```
+    pub fn load_queues(&mut self, path: &str) {
+        let content = std::fs::read_to_string(path).expect("Failed to read file");
+        self.queues = serde_yaml::from_str(&content).expect("Failed to parse routes file");
     }
 }
 
@@ -130,7 +181,7 @@ impl super::Communicator for RabbitMQCommunicator {
     {
         setup_queue_and_listen(
             self.channel.clone(),
-            MATCH_ABRUPT_CLOSE_QUEUE,
+            self.get_queue_name("match", "abrupt_close"),
             move |_, delivery| {
                 let callback = callback.clone();
                 async move {
@@ -151,7 +202,7 @@ impl super::Communicator for RabbitMQCommunicator {
     {
         setup_queue_and_listen(
             self.channel.clone(),
-            CREATE_GAME_QUEUE,
+            self.get_queue_name("game", "create"),
             move |channel, delivery| {
                 let callback = callback.clone();
                 async move {
@@ -198,7 +249,7 @@ impl super::Communicator for RabbitMQCommunicator {
     {
         setup_queue_and_listen(
             self.channel.clone(),
-            CREATED_MATCH_QUEUE,
+            self.get_queue_name("match", "created"),
             move |channel, delivery| {
                 let callback = callback.clone();
                 async move {
@@ -219,15 +270,19 @@ impl super::Communicator for RabbitMQCommunicator {
         F: MessageHandler<crate::models::MatchResult, Fut>,
         Fut: Future<Output = ()> + Send + Sync + 'static,
     {
-        setup_queue_and_listen(self.channel.clone(), RESULT_MATCH_QUEUE, |_, delivery| {
-            let callback = callback.clone();
-            async move {
-                delivery.ack(BasicAckOptions::default()).await.expect("ack");
+        setup_queue_and_listen(
+            self.channel.clone(),
+            self.get_queue_name("match", "result"),
+            move |_, delivery| {
+                let callback = callback.clone();
+                async move {
+                    delivery.ack(BasicAckOptions::default()).await.expect("ack");
 
-                let result: MatchResult = serde_json::from_slice(&delivery.data).unwrap();
-                callback(result).await;
-            }
-        })
+                    let result: MatchResult = serde_json::from_slice(&delivery.data).unwrap();
+                    callback(result).await;
+                }
+            },
+        )
         .await;
     }
 
@@ -238,8 +293,8 @@ impl super::Communicator for RabbitMQCommunicator {
     {
         setup_queue_and_listen(
             self.channel.clone(),
-            CREATE_MATCH_REQUEST_QUEUE,
-            |_, delivery| {
+            self.get_queue_name("match", "create"),
+            move |_, delivery| {
                 let callback = callback.clone();
                 async move {
                     delivery.ack(BasicAckOptions::default()).await.expect("ack");
@@ -276,7 +331,7 @@ impl super::Communicator for RabbitMQCommunicator {
         self.channel
             .basic_publish(
                 "",
-                CREATE_GAME_QUEUE,
+                self.get_queue_name("game", "create"),
                 BasicPublishOptions::default(),
                 &serde_json::to_vec(&game_server).unwrap(),
                 BasicProperties::default()
@@ -305,7 +360,7 @@ impl super::Communicator for RabbitMQCommunicator {
         self.channel
             .basic_publish(
                 "",
-                CREATE_MATCH_REQUEST_QUEUE,
+                self.get_queue_name("match", "create"),
                 BasicPublishOptions::default(),
                 &serde_json::to_vec(&match_request).unwrap(),
                 BasicProperties::default(),
@@ -318,7 +373,7 @@ impl super::Communicator for RabbitMQCommunicator {
         self.channel
             .basic_publish(
                 "",
-                MATCH_ABRUPT_CLOSE_QUEUE,
+                self.get_queue_name("match", "abrupt_close"),
                 BasicPublishOptions::default(),
                 &serde_json::to_vec(&match_close).unwrap(),
                 BasicProperties::default(),
@@ -331,7 +386,7 @@ impl super::Communicator for RabbitMQCommunicator {
         self.channel
             .basic_publish(
                 "",
-                CREATED_MATCH_QUEUE,
+                self.get_queue_name("match", "created"),
                 BasicPublishOptions::default(),
                 &serde_json::to_vec(&created_match).unwrap(),
                 BasicProperties::default(),
@@ -344,7 +399,7 @@ impl super::Communicator for RabbitMQCommunicator {
         self.channel
             .basic_publish(
                 "",
-                AI_QUEUE,
+                self.get_queue_name("ai", "task"),
                 BasicPublishOptions::default(),
                 serde_json::to_vec(&task).unwrap().as_slice(),
                 BasicProperties::default(),
@@ -357,7 +412,7 @@ impl super::Communicator for RabbitMQCommunicator {
         self.channel
             .basic_publish(
                 "",
-                RESULT_MATCH_QUEUE,
+                self.get_queue_name("match", "result"),
                 BasicPublishOptions::default(),
                 &serde_json::to_vec(&match_result).unwrap(),
                 BasicProperties::default(),
@@ -370,7 +425,7 @@ impl super::Communicator for RabbitMQCommunicator {
         self.channel
             .basic_publish(
                 "",
-                HEALTH_CHECK_QUEUE,
+                self.get_queue_name("health_check", "check"),
                 BasicPublishOptions::default(),
                 client_id.as_bytes(),
                 BasicProperties::default(),
@@ -384,18 +439,61 @@ impl super::Communicator for RabbitMQCommunicator {
         F: MessageHandler<String, Fut>,
         Fut: Future<Output = ()> + Send + Sync + 'static,
     {
-        setup_queue_and_listen(self.channel.clone(), HEALTH_CHECK_QUEUE, {
-            |_, delivery| {
-                let callback = callback.clone();
-                async move {
-                    debug!("Received healthcheck event: {:?}", delivery);
-                    delivery.ack(BasicAckOptions::default()).await.expect("ack");
+        setup_queue_and_listen(
+            self.channel.clone(),
+            self.get_queue_name("health_check", "check"),
+            {
+                move |_, delivery| {
+                    let callback = callback.clone();
+                    async move {
+                        debug!("Received healthcheck event: {:?}", delivery);
+                        delivery.ack(BasicAckOptions::default()).await.expect("ack");
 
-                    let client_id: String = std::string::String::from_utf8(delivery.data).unwrap();
-                    callback(client_id).await;
+                        let client_id: String =
+                            std::string::String::from_utf8(delivery.data).unwrap();
+                        callback(client_id).await;
+                    }
                 }
-            }
-        })
+            },
+        )
         .await;
+    }
+
+    async fn on_ai_register<F, Fut>(&self, callback: F)
+    where
+        F: MessageHandler<crate::models::AIPlayerRegister, Fut>,
+        Fut: Future<Output = ()> + Send + Sync + 'static,
+    {
+        setup_queue_and_listen(
+            self.channel.clone(),
+            self.get_queue_name("ai", "register"),
+            {
+                move |_, delivery| {
+                    let callback = callback.clone();
+                    async move {
+                        debug!("Received AI register event: {:?}", delivery);
+                        delivery.ack(BasicAckOptions::default()).await.expect("ack");
+
+                        let ai_register: crate::models::AIPlayerRegister =
+                            serde_json::from_slice(&delivery.data).unwrap();
+                        callback(ai_register).await;
+                    }
+                }
+            },
+        )
+        .await;
+    }
+
+    async fn register_ai_player(&self, ai_player: &crate::models::AIPlayerRegister) {
+        self.channel
+            .basic_publish(
+                "",
+                self.get_queue_name("ai", "register"),
+                BasicPublishOptions::default(),
+                &serde_json::to_vec(&ai_player).unwrap(),
+                BasicProperties::default(),
+            )
+            .await
+            .unwrap();
     }
 }
