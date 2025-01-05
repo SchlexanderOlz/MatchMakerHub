@@ -43,7 +43,6 @@ fn handle_match(
         players,
         ai_players,
         mode: new_match.mode.clone().into(),
-        ai: new_match.ai,
     }
 }
 

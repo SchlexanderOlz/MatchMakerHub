@@ -271,3 +271,67 @@ impl Filter<HostRequestFilter> for gn_matchmaking_state_types::HostRequestDB {
         true
     }
 }
+
+#[derive(ToSchema, Serialize, Deserialize, Debug, PartialEq, Eq, IntoParams, Default)]
+pub struct AIPlayer {
+    pub game: String,
+    pub mode: String,
+    pub elo: u32,
+    pub display_name: String,
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Debug, PartialEq, Eq, IntoParams, Default)]
+pub struct AIPlayerFilter {
+    pub game: Option<String>,
+    pub mode: Option<String>,
+    pub elo_ge: Option<u32>,
+    pub elo_le: Option<u32>,
+    pub display_name: Option<String>,
+}
+
+impl From<gn_matchmaking_state_types::AIPlayerDB> for AIPlayer {
+    fn from(ai: gn_matchmaking_state_types::AIPlayerDB) -> Self {
+        AIPlayer {
+            game: ai.game,
+            mode: ai.mode,
+            elo: ai.elo,
+            display_name: ai.display_name,
+        }
+    }
+}
+
+impl Filter<AIPlayerFilter> for gn_matchmaking_state_types::AIPlayerDB {
+    fn matches(&self, filter: &AIPlayerFilter) -> bool {
+        if let Some(game) = &filter.game {
+            if self.game != *game {
+                return false;
+            }
+        }
+
+        if let Some(mode) = &filter.mode {
+            if self.mode != *mode {
+                return false;
+            }
+        }
+
+        if let Some(elo_ge) = filter.elo_ge {
+            if self.elo <= elo_ge {
+                return false;
+            }
+        }
+
+        if let Some(elo_le) = filter.elo_le {
+            if self.elo >= elo_le {
+                return false;
+            }
+        }
+
+        if let Some(display_name) = &filter.display_name {
+            if self.display_name != *display_name {
+                return false;
+            }
+        }
+
+        true
+    }
+}

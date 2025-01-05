@@ -21,6 +21,9 @@ use crate::models;
 
         super::handler::host_requests::get_host_requests,
         super::handler::host_requests::get_host_request_by_uuid,
+
+        super::handler::ai_players::get_ai_players,
+        super::handler::ai_players::get_ai_player_by_uuid,
     ),
     components(
         schemas(

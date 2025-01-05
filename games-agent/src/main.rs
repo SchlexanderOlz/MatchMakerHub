@@ -36,7 +36,7 @@ async fn on_match_created(
         region: created_match.region,
         game: created_match.game.clone(),
         mode: created_match.mode.clone(),
-        ai: created_match.ai,
+        ai: !created_match.ai_players.is_empty(),
         server_pub: created_match.url_pub.clone(),
         server_priv: created_match.url_priv.clone(),
         read: created_match.read.clone(),
@@ -47,25 +47,24 @@ async fn on_match_created(
     conn.insert(insert).unwrap();
     debug!("Match {:?} inserted", created_match.read.clone());
 
-    if created_match.ai {
-        for player in created_match.ai_players {
-            let task = gn_communicator::models::Task {
-                ai_id: player.clone(),
-                game: created_match.game.clone(),
-                mode: created_match.mode.clone(),
-                address: created_match.url_priv.clone(),
-                read: created_match.read.clone(),
-                write: created_match.player_write.get(&player).unwrap().clone(),
-                players: created_match
-                    .player_write
-                    .keys()
-                    .map(|x| x.clone())
-                    .collect(),
-            };
+    for player in created_match.ai_players {
+        let task = gn_communicator::models::Task {
+            ai_id: player.clone(),
+            game: created_match.game.clone(),
+            mode: created_match.mode.clone(),
+            address: created_match.url_priv.clone(),
+            read: created_match.read.clone(),
+            write: created_match.player_write.get(&player).unwrap().clone(),
+            players: created_match
+                .player_write
+                .keys()
+                .map(|x| x.clone())
+                .collect(),
+        };
 
-            communicator.get().await.create_ai_task(&task).await;
-        }
-        debug!("AI tasks created for match {:?}", created_match.read);
+        communicator.get().await.create_ai_task(&task).await;
+
+        debug!("AI task created for match {:?}: {:?}", created_match.read, task.ai_id);
     }
 }
 

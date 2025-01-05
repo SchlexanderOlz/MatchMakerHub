@@ -1,5 +1,6 @@
 pub mod active_matches;
 pub mod game_servers;
+pub mod ai_players;
 pub mod host_requests;
 
 

@@ -1,6 +1,6 @@
 [package]
 name = "gn-communicator"
-version = "0.1.5"
+version = "0.1.7"
 edition = "2021"
 description = "Component for communication for game-night microservices"
 license = "MIT"
@@ -19,6 +19,3 @@ uuid = { version = "1.11.0", features = ["v4"] }
 async-recursion = "1.1.1"
 serde_yaml = "0.9.34"
 
-[patch.crates-io]
-gn-matchmaking-state = { path = "../matchmaking-state" }
-gn-matchmaking-state-types = { path = "../matchmaking-state-types" }

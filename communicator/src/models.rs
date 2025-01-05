@@ -36,7 +36,6 @@ pub struct CreatedMatch {
     pub player_write: HashMap<String, String>,
     pub game: String,
     pub mode: String,
-    pub ai: bool,
     pub ai_players: Vec<String>,
     pub read: String,
     pub url_pub: String,
@@ -75,7 +74,6 @@ pub struct CreateMatch {
     pub players: Vec<String>,
     pub ai_players: Vec<String>,
     pub mode: String,
-    pub ai: bool,
 }
 
 #[derive(Deserialize, Debug, Clone, Serialize)]
