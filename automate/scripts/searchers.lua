@@ -14,7 +14,7 @@ local function can_play_together(players)
             return false
         end
 
-        if redis.call('GET', player .. ':ai') ~= nil then
+        if redis.call('GET', player .. ':ai') then
             return false
         end
 
@@ -30,7 +30,7 @@ local function can_play_together(players)
                 return false
             end
 
-            if redis.call('GET', other .. ':ai') ~= nil then
+            if redis.call('GET', other .. ':ai') then
                 return false
             end
 
