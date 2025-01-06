@@ -56,7 +56,7 @@ async fn main() {
     let connector = RedisAdapter::connect(&redis_url).expect("Could not connect to Redis database");
 
     let redis_connection = connector.client.get_connection().unwrap();
-    let connector = Arc::new(connector.with_publisher(RedisInfoPublisher::new(redis_connection)));
+    let connector = Arc::new(connector.with_publisher(RedisInfoPublisher::new(redis_connection)).with_auto_timeout(60));
 
     let amqp_url = std::env::var("AMQP_URL").expect("AMQP_URL must be set");
     let communicator =

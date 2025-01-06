@@ -6,6 +6,7 @@ services:
       context: ./connector-api
       args:
         - HOST_ADDR=0.0.0.0:4000
+        - DEBUG=${DEBUG}
     container_name: connector-api
     command: connector-api
     ports:
@@ -34,6 +35,7 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379
       - AMQP_URL=${AMQP_URL}
+      - DEBUG=${DEBUG}
     networks:
       - game-night-network
 
@@ -42,6 +44,7 @@ services:
       context: ./games-agent
       args:
         - AMQP_URL=${AMQP_URL}
+        - DEBUG=${DEBUG}
     container_name: games-agent
     command: games-agent
     restart: on-failure
@@ -70,6 +73,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - HOST_URL=0.0.0.0:6969
       - EZAUTH_URL=${EZAUTH_URL}
+      - DEBUG=${DEBUG}
     networks:
       - game-night-network
 
@@ -87,6 +91,7 @@ services:
       - SEARCHERS_SCRIPT_DIR=/usr/src/automate/scripts/searchers.lua
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - DEBUG=${DEBUG}
 
   redis:
     image: redis:latest

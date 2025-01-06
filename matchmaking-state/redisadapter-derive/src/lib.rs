@@ -74,10 +74,27 @@ fn impl_insert_writer(ast: &syn::DeriveInput) -> TokenStream {
 
     }).collect();
 
+    let expire_sets: Vec<proc_macro2::TokenStream> = data.fields.iter().map(|field| {
+        let field_name = field.ident.as_ref().unwrap();
+        quote! {
+            pipe.expire(format!("{base_key}:{}", stringify!(#field_name)).as_str(), timeout);
+        }
+
+    }).collect();
+
+
+
     let gen = quote! {
             impl gn_matchmaking_state::adapters::redis::RedisInsertWriter for #name {
                 fn write(&self, pipe: &mut gn_matchmaking_state::adapters::redis::Pipeline, base_key: &str) -> Result<(), Box<dyn std::error::Error>> {
                     #(#sets)*
+                    Ok(())
+                }
+            }
+
+            impl gn_matchmaking_state::adapters::redis::RedisExpireable for #name {
+                fn expire(&self, pipe: &mut gn_matchmaking_state::adapters::redis::Pipeline, base_key: &str, timeout: i64) -> Result<(), Box<dyn std::error::Error>> {
+                    #(#expire_sets)*
                     Ok(())
                 }
             }

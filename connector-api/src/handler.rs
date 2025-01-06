@@ -327,6 +327,7 @@ impl Handler {
         #[cfg(disable_auth)]
         {
             let random_id = Uuid::new_v4().to_string();
+            debug!("Authorization disabled, generated random user_id {:?} for session_token {:?}", random_id, session_token);
             let random_username: String = rand::thread_rng()
                 .sample_iter(&Alphanumeric)
                 .take(10)

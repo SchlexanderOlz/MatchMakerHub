@@ -37,6 +37,7 @@ pub type RedisAdapterDefault = RedisAdapter<redis::Connection>;
 // TODO: There are definetly some thread-mutability issues in the RedisAdapter due to the excesive use of Arc<Mutex>. Fix this in a #Refractoring
 pub struct RedisAdapter<I> {
     pub client: redis::Client,
+    auto_delete: Option<i64>,
     connection: Arc<Mutex<redis::Connection>>,
     publisher: Option<Arc<Mutex<dyn InfoPublisher<I> + Send + Sync>>>,
     handlers: Arc<Mutex<Vec<Arc<dyn Send + Sync + 'static + Fn(Match) -> ()>>>>,
@@ -53,6 +54,7 @@ impl<I> From<redis::Client> for RedisAdapter<I> {
             connection,
             publisher: None,
             handlers: Arc::new(Mutex::new(Vec::new())),
+            auto_delete: None,
         }
     }
 }
@@ -65,6 +67,7 @@ impl<I> Clone for RedisAdapter<I> {
             publisher: self.publisher.clone(),
             client,
             handlers: self.handlers.clone(),
+            auto_delete: self.auto_delete,
         }
     }
 }
@@ -96,6 +99,11 @@ where
         publisher: impl InfoPublisher<I> + Send + Sync + 'static,
     ) -> Self {
         self.publisher = Some(Arc::new(Mutex::new(publisher)));
+        self
+    }
+
+    pub fn with_auto_timeout(mut self, timeout: i64) -> Self {
+        self.auto_delete = Some(timeout);
         self
     }
 
@@ -267,6 +275,10 @@ pub trait RedisIdentifiable {
     }
 }
 
+pub trait RedisExpireable {
+    fn expire(&self, pipe: &mut Pipeline, base_key: &str, timeout: i64) -> Result<(), Box<dyn std::error::Error>>;
+}
+
 pub trait RedisInsertWriter {
     fn write(&self, pipe: &mut Pipeline, base_key: &str) -> Result<(), Box<dyn std::error::Error>>;
 }
@@ -337,7 +349,7 @@ where
 
 impl<T, I> Insertable<T> for RedisAdapter<I>
 where
-    T: RedisInsertWriter + RedisIdentifiable + Clone,
+    T: RedisInsertWriter + RedisExpireable + RedisIdentifiable + Clone,
     std::string::String: Publishable<I>,
 {
     fn insert(&self, data: T) -> Result<String, Box<dyn std::error::Error>> {
@@ -347,6 +359,11 @@ where
         pipe.atomic();
         data.write(&mut pipe, &key)?;
         pipe.set(key.clone(), "");
+
+        if let Some(auto_delete) = self.auto_delete {
+            pipe.expire(key.clone(), auto_delete);
+            data.expire(&mut pipe, &key, auto_delete)?;
+        }
 
         'query: {
             let mut connection = self.connection.lock().unwrap();
@@ -474,7 +491,7 @@ impl<I> Matcher for RedisAdapter<I> {
 
 impl<'a, T, O, F, U> DataAdapter<'a, T, O, F, U> for RedisAdapter<redis::Connection>
 where
-    T: Clone + RedisInsertWriter + RedisIdentifiable + 'a,
+    T: Clone + RedisInsertWriter + RedisExpireable + RedisIdentifiable + 'a,
     O: RedisOutputReader + RedisIdentifiable + 'a,
     F: RedisFilter<O> + Default + 'a,
     U: RedisUpdater<T> + Clone + 'a,

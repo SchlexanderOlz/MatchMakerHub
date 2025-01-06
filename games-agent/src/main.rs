@@ -98,16 +98,25 @@ async fn on_match_result(
 
     if let Some(match_) = match_ {
         conn.remove(&match_.uuid).unwrap();
-        debug!("Match {:?} removed", match_.uuid);
-        if let Err(err) = report_match_result(result.clone(), match_.clone()).await {
-            error!("Error reporting match result: {:?}", err);
-            return;
+
+        #[cfg(not(disable_ranking))]
+        {
+            debug!("Match {:?} removed", match_.uuid);
+            if let Err(err) = report_match_result(result.clone(), match_.clone()).await {
+                error!("Error reporting match result: {:?}", err);
+                return;
+            }
+
+            debug!(
+                "Match {:?} successfully reported to ranking system",
+                match_.uuid
+            );
         }
 
-        debug!(
-            "Match {:?} successfully reported to ranking system",
-            match_.uuid
-        );
+        #[cfg(disable_ranking)]
+        {
+            debug!("Match {:?} not reported to ranking-system (Ranking disabled with feature 'disable_ranking')", match_.uuid);
+        }
     }
 }
 
