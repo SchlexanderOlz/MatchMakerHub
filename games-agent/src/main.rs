@@ -141,6 +141,12 @@ async fn init_game_ranking(
                 name: x.name,
                 weight: x.weight,
             })
+            .chain(vec![
+                gn_ranking_client_rs::models::create::Performance {
+                    name: "point".to_owned(),
+                    weight: 1,
+                },
+            ])
             .collect(),
     };
     Ok(ranking_client.game_init(game).await?)

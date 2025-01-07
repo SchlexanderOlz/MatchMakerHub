@@ -25,7 +25,7 @@ impl Into<gn_ranking_client_rs::models::create::Match> for MatchResultMaker {
             .into_iter()
             .map(
                 |(player_id, performances)| gn_ranking_client_rs::models::create::PlayerMatch {
-                    player_id,
+                    player_id: player_id.clone(),
                     player_performances: performances
                         .into_iter()
                         .counts()
@@ -36,6 +36,10 @@ impl Into<gn_ranking_client_rs::models::create::Match> for MatchResultMaker {
                                 count: x.1 as i32,
                             },
                         )
+                        .chain(std::iter::once(gn_ranking_client_rs::models::create::PlayerPerformance {
+                            name: "point".to_owned(),
+                            count: result.winners.get(&player_id).unwrap_or(result.losers.get(&player_id).unwrap()).clone() as i32,
+                        }))
                         .collect(),
                 },
             )
