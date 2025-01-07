@@ -169,7 +169,7 @@ async fn save_game(
 
     if let Some(server) = conn.all()?.find(|x: &DBGameServer| {
         x.server_pub.clone() == created_game.server_pub.clone()
-            && x.game.clone() == created_game.game.clone()
+            && x.game.clone() == created_game.game.clone() && x.mode.clone() == created_game.mode.clone()
     }) {
         warn!("Tried to create a server that already exists. Creation skipped");
         return Ok(server.uuid);
@@ -304,7 +304,7 @@ async fn main() {
 
     let state = RedisAdapter::connect(&redis_url).unwrap();
     let connection = state.client.get_connection().unwrap();
-    let state = Arc::new(state.with_publisher(RedisInfoPublisher::new(connection)));
+    let state = Arc::new(state.with_publisher(RedisInfoPublisher::new(connection)).with_auto_timeout(1800));
 
     listen_for_match_created(state.clone()).await;
     listen_for_game_created(state.clone()).await;
