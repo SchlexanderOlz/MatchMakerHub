@@ -55,6 +55,7 @@ services:
     volumes:
       - ./matchmaking-state:/usr/matchmaking-state
       - ./matchmaking-state-types:/usr/matchmaking-state-types
+      - ./communicator:/usr/communicator
     restart: on-failure
     depends_on:
       - redis

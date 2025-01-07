@@ -1,7 +1,8 @@
+use gn_communicator::models::AIPlayerRegister;
 use gn_communicator::Communicator;
 use gn_ranking_client_rs::RankingClient;
 use lazy_static::lazy_static;
-use models::MatchResultMaker;
+use models::{AIPlayerMaker, GameServerMaker, MatchResultMaker};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -9,7 +10,7 @@ use std::time::Duration;
 use async_once::AsyncOnce;
 use gn_communicator::rabbitmq::RabbitMQCommunicator;
 use gn_matchmaking_state::prelude::*;
-use gn_matchmaking_state_types::{ActiveMatch, ActiveMatchDB, DBGameServer, GameServer};
+use gn_matchmaking_state_types::{AIPlayer, AIPlayerDB, ActiveMatch, ActiveMatchDB, DBGameServer, GameServer};
 use healthcheck::HealthCheck;
 use tracing::{debug, error, warn, Level};
 use tracing_subscriber::FmtSubscriber;
@@ -35,7 +36,7 @@ async fn on_match_created(
         region: created_match.region,
         game: created_match.game.clone(),
         mode: created_match.mode.clone(),
-        ai: created_match.ai,
+        ai: !created_match.ai_players.is_empty(),
         server_pub: created_match.url_pub.clone(),
         server_priv: created_match.url_priv.clone(),
         read: created_match.read.clone(),
@@ -46,25 +47,24 @@ async fn on_match_created(
     conn.insert(insert).unwrap();
     debug!("Match {:?} inserted", created_match.read.clone());
 
-    if created_match.ai {
-        for player in created_match.ai_players {
-            let task = gn_communicator::models::Task {
-                ai_level: 1,
-                game: created_match.game.clone(),
-                mode: created_match.mode.clone(),
-                address: created_match.url_priv.clone(),
-                read: created_match.read.clone(),
-                write: created_match.player_write.get(&player).unwrap().clone(),
-                players: created_match
-                    .player_write
-                    .keys()
-                    .map(|x| x.clone())
-                    .collect(),
-            };
+    for player in created_match.ai_players {
+        let task = gn_communicator::models::Task {
+            ai_id: player.clone(),
+            game: created_match.game.clone(),
+            mode: created_match.mode.clone(),
+            address: created_match.url_priv.clone(),
+            read: created_match.read.clone(),
+            write: created_match.player_write.get(&player).unwrap().clone(),
+            players: created_match
+                .player_write
+                .keys()
+                .map(|x| x.clone())
+                .collect(),
+        };
 
-            communicator.get().await.create_ai_task(&task).await;
-        }
-        debug!("AI tasks created for match {:?}", created_match.read);
+        communicator.get().await.create_ai_task(&task).await;
+
+        debug!("AI task created for match {:?}: {:?}", created_match.read, task.ai_id);
     }
 }
 
@@ -98,16 +98,25 @@ async fn on_match_result(
 
     if let Some(match_) = match_ {
         conn.remove(&match_.uuid).unwrap();
-        debug!("Match {:?} removed", match_.uuid);
-        if let Err(err) = report_match_result(result.clone(), match_.clone()).await {
-            error!("Error reporting match result: {:?}", err);
-            return;
+
+        #[cfg(not(disable_ranking))]
+        {
+            debug!("Match {:?} removed", match_.uuid);
+            if let Err(err) = report_match_result(result.clone(), match_.clone()).await {
+                error!("Error reporting match result: {:?}", err);
+                return;
+            }
+
+            debug!(
+                "Match {:?} successfully reported to ranking system",
+                match_.uuid
+            );
         }
 
-        debug!(
-            "Match {:?} successfully reported to ranking system",
-            match_.uuid
-        );
+        #[cfg(disable_ranking)]
+        {
+            debug!("Match {:?} not reported to ranking-system (Ranking disabled with feature 'disable_ranking')", match_.uuid);
+        }
     }
 }
 
@@ -158,7 +167,7 @@ async fn save_game(
 ) -> Result<String, Box<dyn std::error::Error>> {
     debug!("Trying to create server: {:?}", created_game);
 
-    if let Some(server) = conn.all().unwrap().find(|x: &DBGameServer| {
+    if let Some(server) = conn.all()?.find(|x: &DBGameServer| {
         x.server_pub.clone() == created_game.server_pub.clone()
             && x.game.clone() == created_game.game.clone()
     }) {
@@ -166,9 +175,27 @@ async fn save_game(
         return Ok(server.uuid);
     }
 
-    let server = conn.insert(created_game.clone()).unwrap();
-    debug!("Successfully Created server: {:?}", created_game);
-    Ok(server)
+    let uuid = conn.insert(created_game.clone())?;
+    debug!("Successfully Created server: {:?}", uuid);
+    Ok(uuid)
+}
+
+async fn save_ai_player(ai_player: AIPlayerRegister, conn: Arc<RedisAdapterDefault>) -> Result<String, Box<dyn std::error::Error>> {
+    debug!("Trying to create AI player: {:?}", ai_player);
+
+    if let Some(ai_player) = conn.all()?.find(|x: &AIPlayerDB| {
+        x.display_name.clone() == ai_player.display_name.clone()
+        && x.game.clone() == ai_player.game.clone()
+        && x.mode.clone() == ai_player.mode.clone()
+    }) {
+        warn!("Tried to create an AI player that already exists. Creation skipped");
+        return Ok(ai_player.uuid);
+    }
+
+    let ai_player: AIPlayer = AIPlayerMaker::from(ai_player.clone()).into();
+    let uuid = conn.insert(ai_player)?;
+    debug!("Successfully Created AI Player: {:?}", uuid);
+    Ok(uuid)
 }
 
 async fn listen_for_match_abrupt_close(conn: Arc<RedisAdapterDefault>) {
@@ -216,7 +243,7 @@ async fn listen_for_game_created(conn: Arc<RedisAdapterDefault>) {
             move |created_game: gn_communicator::models::GameServerCreate| {
                 let conn = conn.clone();
                 async move {
-                    let game_id = save_game(created_game.clone().into(), conn.clone())
+                    let game_id = save_game(GameServerMaker::from(created_game.clone()).into(), conn.clone())
                         .await
                         .unwrap();
 
@@ -254,6 +281,19 @@ async fn listen_for_healthcheck(conn: Arc<RedisAdapterDefault>) {
         .await;
 }
 
+async fn listen_for_ai_player_register(conn: Arc<RedisAdapterDefault>) {
+    communicator
+        .get()
+        .await
+        .on_ai_register(move |ai_player: gn_communicator::models::AIPlayerRegister| {
+            let conn = conn.clone();
+            async move {
+                save_ai_player(ai_player, conn.clone()).await.unwrap();
+            }
+        })
+        .await;
+}
+
 #[tokio::main]
 async fn main() {
     let subscriber = FmtSubscriber::builder()
@@ -266,34 +306,11 @@ async fn main() {
     let connection = state.client.get_connection().unwrap();
     let state = Arc::new(state.with_publisher(RedisInfoPublisher::new(connection)));
 
-    let listen_for_match_created = {
-        let state = state.clone();
-        tokio::spawn(listen_for_match_created(state.clone()))
-    };
-
-    let listen_for_game_created = {
-        let state = state.clone();
-        tokio::spawn(listen_for_game_created(state.clone()))
-    };
-
-    let listen_for_healthcheck = {
-        let state = state.clone();
-        tokio::spawn(listen_for_healthcheck(state.clone()))
-    };
-
-    let listen_for_match_result = {
-        let state = state.clone();
-        tokio::spawn(listen_for_match_result(state.clone()))
-    };
-
-    let listen_for_match_abrupt_close = {
-        let state = state.clone();
-        tokio::spawn(listen_for_match_abrupt_close(state.clone()))
-    };
-
-    listen_for_healthcheck.await.unwrap();
-    listen_for_match_created.await.unwrap();
-    listen_for_match_result.await.unwrap();
-    listen_for_game_created.await.unwrap();
-    listen_for_match_abrupt_close.await.unwrap();
+    listen_for_match_created(state.clone()).await;
+    listen_for_game_created(state.clone()).await;
+    listen_for_healthcheck(state.clone()).await;
+    listen_for_match_result(state.clone()).await;
+    listen_for_match_abrupt_close(state.clone()).await;
+    listen_for_ai_player_register(state.clone()).await;
+    loop {thread::sleep(Duration::from_secs(1));}
 }

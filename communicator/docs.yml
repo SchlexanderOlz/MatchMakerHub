@@ -1,0 +1,395 @@
+asyncapi: 3.0.0
+info:
+  title: Matchmaking API
+  version: 1.0.0
+  description: AsyncAPI definition for the matchmaking service
+channels:
+  match-created:
+    address: match-created
+    messages:
+      publish.message:
+        contentType: application/json
+        payload:
+          $ref: '#/components/schemas/CreatedMatch'
+      subscribe.message:
+        contentType: application/json
+        payload:
+          $ref: '#/components/schemas/CreatedMatch'
+  match-result:
+    address: match-result
+    messages:
+      publish.message:
+        contentType: application/json
+        payload:
+          $ref: '#/components/schemas/MatchResult'
+      subscribe.message:
+        contentType: application/json
+        payload:
+          $ref: '#/components/schemas/MatchResult'
+  match-abrupt-close:
+    address: match-abrupt-close
+    messages:
+      publish.message:
+        contentType: application/json
+        payload:
+          $ref: '#/components/schemas/MatchAbrubtClose'
+      subscribe.message:
+        contentType: application/json
+        payload:
+          $ref: '#/components/schemas/MatchAbrubtClose'
+  match-create-request:
+    address: match-create-request
+    messages:
+      publish.message:
+        contentType: application/json
+        payload:
+          $ref: '#/components/schemas/CreateMatch'
+      subscribe.message:
+        contentType: application/json
+        payload:
+          $ref: '#/components/schemas/CreateMatch'
+  game-created:
+    address: game-created
+    messages:
+      publish.message:
+        contentType: application/json
+        payload:
+          $ref: '#/components/schemas/GameServerCreate'
+      subscribe.message:
+        contentType: application/json
+        payload:
+          $ref: '#/components/schemas/GameServerCreate'
+  health-check:
+    address: health-check
+    messages:
+      publish.message:
+        contentType: application/json
+        payload:
+          type: object
+          properties:
+            status:
+              type: string
+      subscribe.message:
+        contentType: application/json
+        payload:
+          type: object
+          properties:
+            status:
+              type: string
+  ai-task-generate-request:
+    address: ai-task-generate-request
+    messages:
+      publish.message:
+        contentType: application/json
+        payload:
+          $ref: '#/components/schemas/Task'
+      subscribe.message:
+        contentType: application/json
+        payload:
+          $ref: '#/components/schemas/Task'
+  ai-register:
+    address: ai-register
+    messages:
+      publish.message:
+        contentType: application/json
+        payload:
+          $ref: '#/components/schemas/AIPlayerRegister'
+      subscribe.message:
+        contentType: application/json
+        payload:
+          $ref: '#/components/schemas/AIPlayerRegister'
+operations:
+  match-created.publish:
+    action: receive
+    channel:
+      $ref: '#/channels/match-created'
+    summary: Match created event
+    messages:
+      - $ref: '#/channels/match-created/messages/publish.message'
+  match-created.subscribe:
+    action: send
+    channel:
+      $ref: '#/channels/match-created'
+    summary: Match created event
+    messages:
+      - $ref: '#/channels/match-created/messages/subscribe.message'
+  match-result.publish:
+    action: receive
+    channel:
+      $ref: '#/channels/match-result'
+    summary: Match result event
+    messages:
+      - $ref: '#/channels/match-result/messages/publish.message'
+  match-result.subscribe:
+    action: send
+    channel:
+      $ref: '#/channels/match-result'
+    summary: Match result event
+    messages:
+      - $ref: '#/channels/match-result/messages/subscribe.message'
+  match-abrupt-close.publish:
+    action: receive
+    channel:
+      $ref: '#/channels/match-abrupt-close'
+    summary: Match abrupt close event
+    messages:
+      - $ref: '#/channels/match-abrupt-close/messages/publish.message'
+  match-abrupt-close.subscribe:
+    action: send
+    channel:
+      $ref: '#/channels/match-abrupt-close'
+    summary: Match abrupt close event
+    messages:
+      - $ref: '#/channels/match-abrupt-close/messages/subscribe.message'
+  match-create-request.publish:
+    action: receive
+    channel:
+      $ref: '#/channels/match-create-request'
+    summary: Match create request
+    messages:
+      - $ref: '#/channels/match-create-request/messages/publish.message'
+  match-create-request.subscribe:
+    action: send
+    channel:
+      $ref: '#/channels/match-create-request'
+    summary: Match create request
+    messages:
+      - $ref: '#/channels/match-create-request/messages/subscribe.message'
+  game-created.publish:
+    action: receive
+    channel:
+      $ref: '#/channels/game-created'
+    summary: Game created event
+    messages:
+      - $ref: '#/channels/game-created/messages/publish.message'
+  game-created.subscribe:
+    action: send
+    channel:
+      $ref: '#/channels/game-created'
+    summary: Game created event
+    messages:
+      - $ref: '#/channels/game-created/messages/subscribe.message'
+  health-check.publish:
+    action: receive
+    channel:
+      $ref: '#/channels/health-check'
+    summary: Health check event
+    messages:
+      - $ref: '#/channels/health-check/messages/publish.message'
+  health-check.subscribe:
+    action: send
+    channel:
+      $ref: '#/channels/health-check'
+    summary: Health check event
+    messages:
+      - $ref: '#/channels/health-check/messages/subscribe.message'
+  ai-task-generate-request.publish:
+    action: receive
+    channel:
+      $ref: '#/channels/ai-task-generate-request'
+    summary: AI task generate request
+    messages:
+      - $ref: '#/channels/ai-task-generate-request/messages/publish.message'
+  ai-task-generate-request.subscribe:
+    action: send
+    channel:
+      $ref: '#/channels/ai-task-generate-request'
+    summary: AI task generate request
+    messages:
+      - $ref: '#/channels/ai-task-generate-request/messages/subscribe.message'
+  ai-register.publish:
+    action: receive
+    channel:
+      $ref: '#/channels/ai-register'
+    summary: AI register request
+    messages:
+      - $ref: '#/channels/ai-register/messages/publish.message'
+  ai-register.subscribe:
+    action: send
+    channel:
+      $ref: '#/channels/ai-register'
+    summary: AI register request
+    messages:
+      - $ref: '#/channels/ai-register/messages/subscribe.message'
+components:
+  schemas:
+    MatchError:
+      type: object
+      oneOf:
+        - type: string
+          enum:
+            - AllPlayersDisconnected
+        - type: object
+          properties:
+            PlayerDidNotJoin:
+              type: string
+    MatchAbrubtClose:
+      description: Used when the match closed unexpectedly. E.g. a player disconnected
+      type: object
+      properties:
+        match_id:
+          type: string
+        reason:
+          $ref: '#/components/schemas/MatchError'
+    MatchResult:
+      description: Used when the match finished successfully. Player will be ranked.
+      type: object
+      properties:
+        match_id:
+          type: string
+        winners:
+          description: The user_id's of everyone who can be considered a winner
+          type: object
+          additionalProperties:
+            type: integer
+        losers:
+          description: The user_id's of everyone who can be considered a loser
+          type: object
+          additionalProperties:
+            type: integer
+        ranking:
+          $ref: '#/components/schemas/Ranking'
+        event_log:
+          description: Every action which happened during the match in chonological order.
+          type: array
+          items:
+            type: object
+    Ranking:
+      type: object
+      properties:
+        performances:
+          description: >-
+            Actions which should be included in the ranking. All actions need to
+            have been definied in the initial game-creation message.
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+    CreatedMatch:
+      type: object
+      properties:
+        region:
+          description: Abstract server location. For default use "eu-central-1"
+          type: string
+        player_write:
+          description: >-
+            Map of user_id's to their write key. Key -> user_id, Value ->
+            write_key
+          type: object
+          additionalProperties:
+            type: string
+        game:
+          type: string
+        mode:
+          type: string
+        ai_players:
+          description: All AI players in the match
+          type: array
+          items:
+            type: string
+        read:
+          description: Read-Token for the match (Equals the match_id)
+          type: string
+        url_pub:
+          description: Public URL of the server on which the match has been created
+          type: string
+        url_priv:
+          description: Internal URL of the server on which the match has been created
+          type: string
+    GameServerCreate:
+      type: object
+      properties:
+        region:
+          type: string
+        game:
+          type: string
+        mode:
+          type: string
+        min_players:
+          description: Minimum amount of players needed to start a match
+          type: integer
+        max_players:
+          description: Maximum amount of players allowed to start a match
+          type: integer
+        server_pub:
+          description: Public URL of the server
+          type: string
+        server_priv:
+          description: Internal URL of the server
+          type: string
+        ranking_conf:
+          description: Configuration of the game for the ranking system
+          $ref: '#/components/schemas/RankingConf'
+    RankingConf:
+      type: object
+      properties:
+        max_stars:
+          description: Maximum amount of stars a player can gain in one match
+          type: integer
+        description:
+          description: >-
+            Goddamn unnecessary description for what ever fucking reason (Thanks
+            Lukas)
+          type: string
+        performances:
+          description: >-
+            Actions which should be included in the ranking. These will be the
+            allowed actions which can be sent in the MatchResult message.
+          type: array
+          items:
+            $ref: '#/components/schemas/Performance'
+    Performance:
+      type: object
+      properties:
+        name:
+          type: string
+        weight:
+          type: integer
+    CreateMatch:
+      type: object
+      properties:
+        game:
+          type: string
+        players:
+          type: array
+          items:
+            type: string
+        ai_players:
+          type: array
+          items:
+            type: string
+        mode:
+          type: string
+        ai:
+          type: boolean
+    AIPlayerRegister:
+      type: object
+      properties:
+        game:
+          type: string
+        mode:
+          type: string
+        elo:
+          type: integer
+        display_name:
+          type: string
+    Task:
+      type: object
+      properties:
+        ai_id:
+          type: string
+        game:
+          type: string
+        mode:
+          type: string
+        address:
+          type: string
+        read:
+          type: string
+        write:
+          type: string
+        players:
+          type: array
+          items:
+            type: string

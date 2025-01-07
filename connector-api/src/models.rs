@@ -16,7 +16,7 @@ pub struct Search {
     pub session_token: String,
     pub game: String,
     pub mode: String,
-    pub ai: bool,
+    pub ai: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]

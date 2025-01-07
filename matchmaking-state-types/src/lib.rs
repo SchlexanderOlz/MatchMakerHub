@@ -8,8 +8,7 @@ use serde::Deserialize;
 #[cfg(feature = "redis")]
 use gn_matchmaking_state::adapters::redis::RedisFilter;
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[derive(RedisInsertWriter, RedisIdentifiable)]
+#[derive(Debug, Clone, PartialEq, Deserialize, RedisInsertWriter, RedisIdentifiable)]
 #[name("game_servers")]
 pub struct GameServer {
     pub region: String,
@@ -22,8 +21,7 @@ pub struct GameServer {
     pub max_players: u32,
 }
 
-#[derive(Debug, Clone)]
-#[derive(RedisOutputReader, RedisIdentifiable)]
+#[derive(Debug, Clone, RedisOutputReader, RedisIdentifiable)]
 #[name("game_servers")]
 pub struct DBGameServer {
     #[cfg_attr(feature = "redis", uuid)]
@@ -44,8 +42,7 @@ impl PartialEq for DBGameServer {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-#[derive(RedisUpdater)]
+#[derive(Debug, Clone, Default, RedisUpdater)]
 #[name("game_servers")]
 pub struct GameServerUpdater {
     pub game: Option<String>,
@@ -73,8 +70,7 @@ impl RedisFilter<DBGameServer> for GameServerFilter {
     }
 }
 
-#[derive(Debug, Clone)]
-#[derive(RedisInsertWriter, RedisIdentifiable)]
+#[derive(Debug, Clone, RedisInsertWriter, RedisIdentifiable)]
 #[name("host_requests")]
 
 pub struct HostRequest {
@@ -90,8 +86,7 @@ pub struct HostRequest {
     pub wait_start: SystemTime,
 }
 
-#[derive(Debug, Clone)]
-#[derive(RedisOutputReader, RedisIdentifiable)]
+#[derive(Debug, Clone, RedisOutputReader, RedisIdentifiable)]
 #[name("host_requests")]
 pub struct HostRequestDB {
     #[cfg_attr(feature = "redis", uuid)]
@@ -108,8 +103,7 @@ pub struct HostRequestDB {
     pub wait_start: SystemTime,
 }
 
-#[derive(Debug, Clone, Default)]
-#[derive(RedisUpdater)]
+#[derive(Debug, Clone, Default, RedisUpdater)]
 #[name("host_requests")]
 pub struct HostRequestUpdate {
     pub player_id: Option<String>,
@@ -123,14 +117,13 @@ pub struct HostRequestUpdate {
     pub max_players: Option<u32>,
     pub wait_start: Option<SystemTime>,
 }
-#[derive(Debug, Clone)]
-#[derive(RedisInsertWriter, RedisIdentifiable)]
+#[derive(Debug, Clone, RedisInsertWriter, RedisIdentifiable)]
 #[name("searchers")]
 pub struct Searcher {
     pub player_id: String,
     pub elo: u32,
     pub mode: String,
-    pub ai: bool,
+    pub ai: Option<String>,
     pub game: String,
     pub region: String,
     pub min_players: u32,
@@ -138,21 +131,19 @@ pub struct Searcher {
     pub wait_start: SystemTime,
 }
 
-#[derive(Debug, Clone)]
-#[derive(RedisUpdater)]
+#[derive(Debug, Clone, RedisUpdater)]
 #[name("searchers")]
 pub struct SearcherUpdate {
     pub player_id: Option<String>,
     pub elo: Option<u32>,
     pub mode: Option<String>,
-    pub ai: Option<bool>,
+    pub ai: Option<Option<String>>,
     pub game: Option<String>,
     pub region: Option<String>,
     pub wait_start: Option<SystemTime>,
 }
 
-#[derive(Debug, Clone)]
-#[derive(RedisOutputReader, RedisIdentifiable)]
+#[derive(Debug, Clone, RedisOutputReader, RedisIdentifiable)]
 #[name("searchers")]
 pub struct DBSearcher {
     #[cfg_attr(feature = "redis", uuid)]
@@ -160,7 +151,7 @@ pub struct DBSearcher {
     pub player_id: String,
     pub elo: u32,
     pub mode: String,
-    pub ai: bool,
+    pub ai: Option<String>,
     pub game: String,
     pub region: String,
     pub min_players: u32,
@@ -184,8 +175,7 @@ pub struct SearcherMatchConfig {
     pub wait_time_to_server_factor: f32,
 }
 
-#[derive(Debug, Clone)]
-#[derive(RedisInsertWriter, RedisIdentifiable)]
+#[derive(Debug, Clone, RedisInsertWriter, RedisIdentifiable)]
 #[name("active_matches")]
 pub struct ActiveMatch {
     pub game: String,
@@ -198,8 +188,7 @@ pub struct ActiveMatch {
     pub player_write: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone)]
-#[derive(RedisOutputReader, RedisIdentifiable)]
+#[derive(Debug, Clone, RedisOutputReader, RedisIdentifiable)]
 #[name("active_matches")]
 pub struct ActiveMatchDB {
     #[cfg_attr(feature = "redis", uuid)]
@@ -214,6 +203,26 @@ pub struct ActiveMatchDB {
     pub player_write: HashMap<String, String>,
 }
 
+#[derive(Debug, Clone, RedisInsertWriter, RedisIdentifiable)]
+#[name("ai_players")]
+pub struct AIPlayer {
+    pub game: String,
+    pub mode: String,
+    pub elo: u32,
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, RedisOutputReader, RedisIdentifiable)]
+#[name("ai_players")]
+pub struct AIPlayerDB {
+    #[uuid]
+    pub uuid: String,
+    pub game: String,
+    pub mode: String,
+    pub elo: u32,
+    pub display_name: String,
+}
+
 #[cfg(test)]
 mod tests {
     use std::error::Error;
@@ -223,15 +232,14 @@ mod tests {
     #[test]
 
     fn test_redis_adapter_insert_game_server() {
+        use super::*;
         use gn_matchmaking_state::adapters::redis::publisher::native::RedisInfoPublisher;
         use gn_matchmaking_state::adapters::redis::RedisAdapter;
         use gn_matchmaking_state::adapters::Insertable;
-        use super::*;
 
         let adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
         let publisher = RedisInfoPublisher::new(adapter.client.get_connection().unwrap());
         let adapter = adapter.with_publisher(publisher);
-
 
         let game_server = GameServer {
             region: "eu".to_owned(),
@@ -248,15 +256,13 @@ mod tests {
 
     #[test]
     fn test_redis_adapter_all_game_server() {
-        use gn_matchmaking_state::adapters::redis::publisher::native::RedisInfoPublisher;
-        use gn_matchmaking_state::adapters::redis::{RedisAdapter};
         use super::*;
+        use gn_matchmaking_state::adapters::redis::publisher::native::RedisInfoPublisher;
+        use gn_matchmaking_state::adapters::redis::RedisAdapter;
 
         let adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
         let publisher = RedisInfoPublisher::new(adapter.client.get_connection().unwrap());
         let adapter = adapter.with_publisher(publisher);
-
-
 
         let game_server = GameServer {
             region: "eu".to_owned(),
@@ -282,9 +288,9 @@ mod tests {
 
     #[test]
     fn test_redis_adapter_remove_game_server() {
-        use gn_matchmaking_state::adapters::redis::publisher::native::RedisInfoPublisher;
-        use gn_matchmaking_state::adapters::redis::{RedisAdapter};
         use super::*;
+        use gn_matchmaking_state::adapters::redis::publisher::native::RedisInfoPublisher;
+        use gn_matchmaking_state::adapters::redis::RedisAdapter;
 
         let adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
         let publisher = RedisInfoPublisher::new(adapter.client.get_connection().unwrap());
@@ -310,16 +316,13 @@ mod tests {
 
     #[test]
     fn test_redis_adapter_update_game_server() {
-        use gn_matchmaking_state::adapters::redis::publisher::native::RedisInfoPublisher;
-        use gn_matchmaking_state::adapters::redis::{RedisAdapter};
         use super::*;
-
-
+        use gn_matchmaking_state::adapters::redis::publisher::native::RedisInfoPublisher;
+        use gn_matchmaking_state::adapters::redis::RedisAdapter;
 
         let adapter = RedisAdapter::connect("redis://0.0.0.0:6379").unwrap();
         let publisher = RedisInfoPublisher::new(adapter.client.get_connection().unwrap());
         let adapter = adapter.with_publisher(publisher);
-
 
         let game_server = GameServer {
             region: "eu".to_owned(),

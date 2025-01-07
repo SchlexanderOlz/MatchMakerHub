@@ -27,6 +27,35 @@ lazy_static! {
     static ref HOST_ADDR: String = option_env!("HOST_ADDR").unwrap().to_string();
 }
 
+/// Sets up listeners for various Socket.IO events related to match-making.
+///
+/// This function registers handlers for the following events:
+/// - `search`: Initiates a search for a match.
+/// - `host`: Hosts a new match.
+/// - `start`: Starts a hosted match.
+/// - `join`: Joins an existing match.
+///
+/// Each event handler performs the necessary actions and emits appropriate responses or errors.
+/// Additionally, it sets up disconnection handlers to clean up resources when a socket disconnects.
+///
+/// # Arguments
+///
+/// * `io` - A reference to the `SocketIo` instance.
+/// * `adapter` - An `Arc` containing the `RedisAdapterDefault` instance.
+/// * `ranking_client` - An `Arc` containing the `RankingClient` instance.
+///
+/// # Example
+///
+/// ```rust
+///     let adapter =
+///        RedisAdapter::connect("redis://john:password@127.0.0.1:6379").expect("Connection to redis database failed");
+///
+///     let ranking_client = Arc::new(gn_ranking_client_rs::RankingClient::new("api_key"));
+///
+///     let (_, io) = SocketIo::new_layer();
+///
+///     setup_listeners(&io, adapter, ranking_client);
+/// ```
 fn setup_listeners(
     io: &SocketIo,
     adapter: Arc<RedisAdapterDefault>,
@@ -40,6 +69,7 @@ fn setup_listeners(
             info!("Socket.IO connected: {:?} {:?}", socket.ns(), socket.id);
             let handler = Arc::new(Handler::new(adapter_clone.clone(), ranking_client));
 
+            // Generic handler to notify that a match has been found
             let notify_on_match = {
                 let handler = handler.clone();
                 let socket = socket.clone();
@@ -217,7 +247,7 @@ mod tests {
             region: "eu".to_string(),
             game: "SchnapsenTest".to_string(),
             mode: "duo".to_string(),
-            ai: false,
+            ai: None,
         };
 
         socket
@@ -283,7 +313,7 @@ mod tests {
             region: "eu".to_string(),
             game: "Schnapsen".to_string(),
             mode: "duo".to_string(),
-            ai: false,
+            ai: None,
         };
 
         let search = make_search();

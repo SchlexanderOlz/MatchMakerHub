@@ -1,0 +1,15 @@
+match:
+  created: "match-created"
+  result: "match-result"
+  abrupt_close: "match-abrupt-close"
+  create: "match-create-request"
+
+game:
+  create: "game-created"
+
+health_check:
+  check: "health-check"
+
+ai:
+  task: "ai-task-generate-request"
+  register: "ai-register"

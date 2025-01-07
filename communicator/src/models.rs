@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use gn_matchmaking_state_types::GameServer;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -37,7 +36,6 @@ pub struct CreatedMatch {
     pub player_write: HashMap<String, String>,
     pub game: String,
     pub mode: String,
-    pub ai: bool,
     pub ai_players: Vec<String>,
     pub read: String,
     pub url_pub: String,
@@ -76,31 +74,23 @@ pub struct CreateMatch {
     pub players: Vec<String>,
     pub ai_players: Vec<String>,
     pub mode: String,
-    pub ai: bool,
+}
+
+#[derive(Deserialize, Debug, Clone, Serialize)]
+pub struct AIPlayerRegister {
+    pub game: String,
+    pub mode: String,
+    pub elo: u32,
+    pub display_name: String
 }
 
 #[derive(Serialize)]
 pub struct Task {
-    pub ai_level: i32,
+    pub ai_id: String,
     pub game: String,
     pub mode: String,
     pub address: String,
     pub read: String,
     pub write: String,
     pub players: Vec<String>
-}
-
-impl Into<GameServer> for crate::models::GameServerCreate {
-    fn into(self) -> GameServer {
-        GameServer {
-            region: self.region,
-            game: self.game,
-            mode: self.mode,
-            server_pub: self.server_pub,
-            server_priv: self.server_priv,
-            max_players: self.max_players,
-            min_players: self.min_players,
-            healthy: true,
-        }
-    }
 }
