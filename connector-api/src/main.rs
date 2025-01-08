@@ -16,7 +16,7 @@ use tower_http::{
     cors::{Any, CorsLayer},
     validate_request::ValidateRequestHeaderLayer,
 };
-use tracing::{debug, info, Level};
+use tracing::{debug, error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 mod handler;
@@ -99,7 +99,9 @@ fn setup_listeners(
 
                     socket.on_disconnect(move |socket: SocketRef| {
                         info!("Socket.IO disconnected: {:?}", socket.id);
-                        handler.remove_searcher().unwrap();
+                        if let Err(err) = handler.remove_searcher() {
+                            error!("Error removing searcher: {:?}", err);
+                        }
                     });
                 }
             });
