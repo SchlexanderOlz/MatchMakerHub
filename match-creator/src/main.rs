@@ -15,7 +15,7 @@ mod model;
 fn handle_match(
     new_match: Match,
     conn: Arc<RedisAdapterDefault>,
-) -> gn_communicator::models::CreateMatch {
+) -> Result<gn_communicator::models::CreateMatch, Box<dyn std::error::Error>> {
     debug!("Matched players: {:?}", new_match);
 
     // TODO: Write the logic for the pool to look up the existence of the game (If needed. Else remove the pool)
@@ -38,12 +38,16 @@ fn handle_match(
         })
         .collect();
 
-    gn_communicator::models::CreateMatch {
+    if (ai_players.len() == players.len()) {
+        return Err("All players are AI players".into());
+    }
+
+    Ok(gn_communicator::models::CreateMatch {
         game: new_match.game,
         players,
         ai_players,
         mode: new_match.mode.clone().into(),
-    }
+    })
 }
 
 #[tokio::main]
@@ -56,7 +60,11 @@ async fn main() {
     let connector = RedisAdapter::connect(&redis_url).expect("Could not connect to Redis database");
 
     let redis_connection = connector.client.get_connection().unwrap();
-    let connector = Arc::new(connector.with_publisher(RedisInfoPublisher::new(redis_connection)).with_auto_timeout(60));
+    let connector = Arc::new(
+        connector
+            .with_publisher(RedisInfoPublisher::new(redis_connection))
+            .with_auto_timeout(60),
+    );
 
     let amqp_url = std::env::var("AMQP_URL").expect("AMQP_URL must be set");
     let communicator =
@@ -72,10 +80,18 @@ async fn main() {
         let connector = connector.clone();
 
         let created_match = handle_match(new_match, connector.clone());
-        let communicator = communicator.clone();
-        tokio::spawn(async move {
-            communicator.create_match(&created_match).await;
-        });
+
+        match created_match {
+            Ok(created_match) => {
+                let communicator = communicator.clone();
+                tokio::spawn(async move {
+                    communicator.create_match(&created_match).await;
+                });
+            }
+            Err(err) => {
+                warn!("Error creating match: {}", err);
+            }
+        }
     });
     info!("On match handler registered");
     match_checker.start_match_check().await.unwrap();
