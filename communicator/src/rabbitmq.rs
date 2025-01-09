@@ -321,7 +321,7 @@ impl super::Communicator for RabbitMQCommunicator {
             .channel
             .basic_consume(
                 reply_to.name().as_str(),
-                format!("{}@create_game", &self.uuid).as_str(),
+                format!("{}@create_game", uuid::Uuid::new_v4()).as_str(),
                 BasicConsumeOptions::default(),
                 FieldTable::default(),
             )
