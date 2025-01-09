@@ -304,7 +304,7 @@ async fn main() {
 
     let state = RedisAdapter::connect(&redis_url).unwrap();
     let connection = state.client.get_connection().unwrap();
-    let state = Arc::new(state.with_publisher(RedisInfoPublisher::new(connection)).with_auto_timeout(1800));
+    let state = Arc::new(state.with_publisher(RedisInfoPublisher::new(connection)));
 
     listen_for_match_created(state.clone()).await;
     listen_for_game_created(state.clone()).await;
