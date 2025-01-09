@@ -2,10 +2,10 @@ use std::sync::{Arc, Mutex};
 
 use gn_matchmaking_state::prelude::*;
 use gn_matchmaking_state_types::{DBSearcher, HostRequestDB};
-use handler::Handler;
+use handler::{Handler, HandlerError};
 use lazy_static::lazy_static;
 use match_maker::MatchMaker;
-use models::{Host, HostInfo, JoinPriv, JoinPub, Search};
+use models::{Host, HostInfo, JoinPriv, JoinPub, Match, Search};
 use rand::rngs::adapter;
 use serde_json::Value;
 use socketioxide::{
@@ -91,7 +91,14 @@ fn setup_listeners(
                 move |socket: SocketRef, Data::<Search>(data)| async move {
                     debug!("Search event received: {:?}", data);
                     if let Err(err) = handler.handle_search(data).await {
-                        socket.emit("error", &err.to_string()).ok();
+                        match err {
+                            HandlerError::PlayerAlreadyPlaying(active_match) => {
+                                let player_id = handler.get_user_id().unwrap();
+                                handler.notify_match_found(&socket, Match::from_active_match(active_match, &player_id));
+                                return;
+                            }
+                            _ => socket.emit("error", &err.to_string()).ok()
+                        };
                         return;
                     }
 
@@ -250,6 +257,7 @@ mod tests {
             game: "SchnapsenTest".to_string(),
             mode: "duo".to_string(),
             ai: None,
+            allow_reconnect: false
         };
 
         socket
@@ -316,6 +324,7 @@ mod tests {
             game: "Schnapsen".to_string(),
             mode: "duo".to_string(),
             ai: None,
+            allow_reconnect: false
         };
 
         let search = make_search();

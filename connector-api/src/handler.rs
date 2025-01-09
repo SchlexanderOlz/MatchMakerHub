@@ -3,11 +3,13 @@ use gn_matchmaking_state::adapters::{
     redis::RedisAdapterDefault, Gettable, Insertable, Removable, Updateable,
 };
 use gn_matchmaking_state_types::{
-    DBGameServer, DBSearcher, GameServer, HostRequest, HostRequestDB, HostRequestUpdate, Searcher,
+    ActiveMatchDB, DBGameServer, DBSearcher, GameServer, HostRequest, HostRequestDB,
+    HostRequestUpdate, Searcher,
 };
 use rand::{distributions::Alphanumeric, Rng};
 use std::{
     f32::consts::E,
+    fmt::{self, write},
     sync::{Arc, Mutex},
     time::SystemTime,
 };
@@ -20,6 +22,30 @@ use socketioxide::extract::SocketRef;
 use crate::models::{Host, JoinPriv, JoinPub, Match, Search};
 
 const DEFAULT_ELO: u32 = 1250;
+
+#[derive(Debug)]
+pub enum HandlerError {
+    HostingNotStarted,
+    NoServerOnline,
+    NoServerFound,
+    PlayerAlreadyHosting(HostRequestDB),
+    PlayerUnauthorized,
+    PlayerNotAllowedToStart,
+    PlayerAlreadyJoined,
+    NotEnoughPlayers,
+    MatchAlreadyStarted,
+    PlayerAlreadyPlaying(ActiveMatchDB),
+    MatchIsFull,
+    InvalidJoinToken,
+}
+
+impl fmt::Display for HandlerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl std::error::Error for HandlerError {}
 
 /// The `Handler` struct manages matchmaking operations, including searching for matches,
 /// hosting matches, joining matches, and starting matches. It interacts with a redis-database for state management and an external ranking client for player ELO ratings.
@@ -101,23 +127,21 @@ impl Handler {
         validation: &ezauth::EZAUTHValidationResponse,
         game: &str,
         mode: &str,
-    ) -> Result<u32, Box<dyn std::error::Error + 'static>> {
+    ) -> u32 {
         #[cfg(disable_elo)]
-        return Ok(DEFAULT_ELO);
+        return DEFAULT_ELO;
         #[cfg(not(disable_elo))]
-        return Ok(
-            match self
-                .ranking_client
-                .player_stars(&validation._id, game, mode)
-                .await
-            {
-                Ok(stars) => stars as u32,
-                Err(e) => {
-                    warn!("Failed to get player stars: {:?}", e);
-                    DEFAULT_ELO
-                }
-            },
-        );
+        return match self
+            .ranking_client
+            .player_stars(&validation._id, game, mode)
+            .await
+        {
+            Ok(stars) => stars as u32,
+            Err(e) => {
+                warn!("Failed to get player stars: {:?}", e);
+                DEFAULT_ELO
+            }
+        };
     }
 
     /// Checks for active game servers in the redis-database that match the specified criteria.
@@ -154,22 +178,31 @@ impl Handler {
     /// # Returns
     ///
     /// A `Result` indicating success or failure.
-    pub async fn handle_search(
-        &self,
-        data: Search,
-    ) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    pub async fn handle_search(&self, data: Search) -> Result<(), HandlerError> {
         debug!("Received Search event: {:?}", data);
 
         let validation = self.authorize(&data.session_token).await?;
+
+        if data.allow_reconnect {
+            if let Some(active_match) = self
+                .state
+                .all()
+                .unwrap()
+                .find(|x: &ActiveMatchDB| x.player_write.contains_key(&validation._id))
+            {
+                return Err(HandlerError::PlayerAlreadyPlaying(active_match));
+            }
+        }
+
         let servers = self.check_for_active_servers(&data.game, &data.mode, &data.region);
 
         debug!("Servers found for search ({:?}): {:?}", data, servers);
 
         if servers.is_empty() {
-            return Err("No such server online".into());
+            return Err(HandlerError::NoServerOnline);
         }
 
-        let elo = self.get_elo(&validation, &data.game, &data.mode).await?;
+        let elo = self.get_elo(&validation, &data.game, &data.mode).await;
 
         let search = data;
 
@@ -206,46 +239,44 @@ impl Handler {
     /// # Returns
     ///
     /// A `Result` indicating success or failure.
-    pub async fn handle_start(&self) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    pub async fn handle_start(&self) -> Result<(), HandlerError> {
         let validation = self.ezauth_response.lock().unwrap().clone();
 
         if validation.is_none() {
-            return Err("Player has not been authorized".into());
+            return Err(HandlerError::PlayerUnauthorized);
         }
 
         let validation = validation.clone().unwrap();
 
         let search_id = self.search_id.lock().unwrap().clone();
         if search_id.is_none() {
-            return Err("No hosting has been started".into());
+            return Err(HandlerError::HostingNotStarted);
         }
 
         let search_id = search_id.unwrap();
 
-        let host: HostRequestDB = self.state.get(&search_id)?;
+        let host: HostRequestDB = self.state.get(&search_id).unwrap();
 
         if host.player_id != validation._id {
-            return Err("Player is not allowed to start the game".into());
+            return Err(HandlerError::PlayerNotAllowedToStart);
         }
 
         if host.joined_players.len() < host.min_players as usize {
-            return Err("Not enough players to start the game".into());
+            return Err(HandlerError::NotEnoughPlayers);
         }
 
-        self.start(&search_id).await?;
+        self.start(&search_id).await;
 
         Ok(())
     }
 
-    async fn start(&self, search_id: &str) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    async fn start(&self, search_id: &str) {
         let update = HostRequestUpdate {
             start_requested: Some(true),
             ..Default::default()
         };
 
-        self.state.update(search_id, update)?;
-
-        Ok(())
+        self.state.update(search_id, update).unwrap();
     }
 
     /// Handles a request to host a match.
@@ -257,10 +288,7 @@ impl Handler {
     /// # Returns
     ///
     /// A `Result` containing the join token or an error.
-    pub async fn handle_host(
-        &self,
-        data: Host,
-    ) -> Result<String, Box<dyn std::error::Error + 'static>> {
+    pub async fn handle_host(&self, data: Host) -> Result<String, HandlerError> {
         let validation = self.authorize(&data.session_token).await?;
 
         let servers = self.check_for_active_servers(&data.game, &data.mode, &data.region);
@@ -268,7 +296,7 @@ impl Handler {
         debug!("Servers found for host-request ({:?}): {:?}", data, servers);
 
         if servers.is_empty() {
-            return Err("No such server online".into());
+            return Err(HandlerError::NoServerFound);
         }
 
         let search = data;
@@ -278,14 +306,13 @@ impl Handler {
             Uuid::new_v4().to_string()
         };
 
-        if self
+        if let Some(host_request) = self
             .state
             .all()
             .unwrap()
             .find(|x: &HostRequestDB| x.player_id == validation._id)
-            .is_some()
         {
-            return Err("Player is already hosting".into());
+            return Err(HandlerError::PlayerAlreadyHosting(host_request));
         }
 
         let host_request = HostRequest {
@@ -319,7 +346,7 @@ impl Handler {
     async fn authorize(
         &self,
         session_token: &str,
-    ) -> Result<EZAUTHValidationResponse, Box<dyn std::error::Error + 'static>> {
+    ) -> Result<EZAUTHValidationResponse, HandlerError> {
         if let Some(response) = self.ezauth_response.lock().unwrap().clone() {
             return Ok(response);
         }
@@ -327,7 +354,10 @@ impl Handler {
         #[cfg(disable_auth)]
         {
             let random_id = Uuid::new_v4().to_string();
-            debug!("Authorization disabled, generated random user_id {:?} for session_token {:?}", random_id, session_token);
+            debug!(
+                "Authorization disabled, generated random user_id {:?} for session_token {:?}",
+                random_id, session_token
+            );
             let random_username: String = rand::thread_rng()
                 .sample_iter(&Alphanumeric)
                 .take(10)
@@ -348,7 +378,14 @@ impl Handler {
             return Ok(validation);
         }
 
-        let validation = ezauth::validate_user(session_token, &self.ezauth_url).await?;
+        let validation = ezauth::validate_user(session_token, &self.ezauth_url).await;
+
+        if validation.is_err() {
+            return Err(HandlerError::PlayerUnauthorized);
+        }
+
+        let validation = validation.unwrap();
+
         self.ezauth_response
             .lock()
             .unwrap()
@@ -368,12 +405,9 @@ impl Handler {
     /// # Returns
     ///
     /// A `Result` indicating success or failure.
-    pub async fn handle_join_priv(
-        &self,
-        data: JoinPriv,
-    ) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    pub async fn handle_join_priv(&self, data: JoinPriv) -> Result<(), HandlerError> {
         if data.join_token.is_empty() {
-            return Err("Invalid join token".into());
+            return Err(HandlerError::InvalidJoinToken);
         }
 
         let validation = self.authorize(&data.session_token).await?;
@@ -398,13 +432,10 @@ impl Handler {
     /// # Returns
     ///
     /// A `Result` indicating success or failure.
-    pub async fn handle_join_pub(
-        &self,
-        data: JoinPub,
-    ) -> Result<(), Box<dyn std::error::Error + 'static>> {
+    pub async fn handle_join_pub(&self, data: JoinPub) -> Result<(), HandlerError> {
         let validation = self.authorize(&data.session_token).await?;
 
-        let host_request: HostRequestDB = self.state.get(&data.host_id)?;
+        let host_request: HostRequestDB = self.state.get(&data.host_id).unwrap();
         self.handle_join("", host_request, &validation).await
     }
 
@@ -424,21 +455,21 @@ impl Handler {
         join_token: &str,
         host_request: HostRequestDB,
         validation: &ezauth::EZAUTHValidationResponse,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), HandlerError> {
         if host_request.start_requested {
-            return Err("Match has started".into());
+            return Err(HandlerError::MatchAlreadyStarted);
         }
 
         if host_request.joined_players.len() == host_request.max_players as usize {
-            return Err("Match is full".into());
+            return Err(HandlerError::MatchIsFull);
         }
 
         if host_request.join_token != join_token {
-            return Err("Invalid join token".into());
+            return Err(HandlerError::InvalidJoinToken);
         }
 
         if host_request.joined_players.contains(&validation._id) {
-            return Err("Player is already in the match".into());
+            return Err(HandlerError::PlayerAlreadyJoined);
         }
 
         let mut update = HostRequestUpdate {
@@ -450,7 +481,7 @@ impl Handler {
             .as_mut()
             .unwrap()
             .push(validation._id.clone());
-        self.state.update(&host_request.uuid, update)?;
+        self.state.update(&host_request.uuid, update).unwrap();
 
         self.search_id
             .lock()
@@ -458,7 +489,7 @@ impl Handler {
             .replace(host_request.uuid.clone());
 
         if host_request.joined_players.len() + 1 == host_request.max_players as usize {
-            self.start(&host_request.uuid).await?;
+            self.start(&host_request.uuid).await;
         }
 
         Ok(())

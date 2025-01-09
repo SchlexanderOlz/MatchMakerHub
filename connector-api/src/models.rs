@@ -1,3 +1,4 @@
+use gn_matchmaking_state_types::ActiveMatchDB;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -17,6 +18,7 @@ pub struct Search {
     pub game: String,
     pub mode: String,
     pub ai: Option<String>,
+    pub allow_reconnect: bool,
 }
 
 #[derive(Deserialize, Debug)]
@@ -46,6 +48,19 @@ pub struct Match {
     pub read: String,
     pub write: String,
     pub players: Vec<String>,
+}
+
+impl Match {
+    pub fn from_active_match(active_match: ActiveMatchDB, player_id: &str) -> Self {
+        Self {
+            address: active_match.server_pub.clone(),
+            read: active_match.read.clone(),
+            write: active_match.player_write.get(player_id).unwrap().clone(),
+            players: active_match
+                .player_write
+                .keys().cloned().collect()
+        }
+    }
 }
 
 #[derive(Serialize)]
