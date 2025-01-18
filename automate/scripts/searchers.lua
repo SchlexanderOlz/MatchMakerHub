@@ -80,11 +80,17 @@ end
 
 
 local function fill_with_ai(players, max_player_count, preferred_ai)
+    if preferred_ai == "." then
+        return
+    end
+
     preferred_ai = preferred_ai or '*'
+
     local game = redis.call('GET', players[1] .. ':game')
     local mode = redis.call('GET', players[1] .. ':mode')
 
     local eligable_ai = {}
+
 
     if preferred_ai ~= '*' then
         for j = 1, #ai_players do
@@ -184,15 +190,13 @@ for i = 1, #searcher_keys do
             if all_fill_with_ai then
                 fill_with_ai(players, max_player_count)
 
-                if #players ~= max_player_count then
-                    return
-                end
+                if #players == max_player_count then
+                    for _, player in ipairs(players) do
+                        redis.call('SET', player .. ':ai', '*')
+                    end
 
-                for _, player in ipairs(players) do
-                    redis.call('SET', player .. ':ai', '*')
+                    handle_match(region, players)
                 end
-
-                handle_match(region, players)
             end
         end
     end
