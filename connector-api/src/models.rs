@@ -48,6 +48,8 @@ pub struct Match {
     pub read: String,
     pub write: String,
     pub players: Vec<String>,
+    pub game: String,
+    pub mode: String,
 }
 
 impl Match {
@@ -58,7 +60,9 @@ impl Match {
             write: active_match.player_write.get(player_id).unwrap().clone(),
             players: active_match
                 .player_write
-                .keys().cloned().collect()
+                .keys().cloned().collect(),
+            game: active_match.game.clone(),
+            mode: active_match.mode.clone(),
         }
     }
 }
