@@ -177,7 +177,7 @@ for i = 1, #searcher_keys do
     else
         if tonumber(redis.call('INCR', player1 .. ':failed_searches')) > 10 then
 
-            if redis.call('GET', player1 .. ':ai') != "." then
+            if redis.call('GET', player1 .. ':ai') ~= "." then
                 redis.call('SET', player1 .. ':fill_with_ai', 1)
             end
 
