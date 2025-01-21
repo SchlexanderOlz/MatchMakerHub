@@ -130,7 +130,9 @@ local function check_for_ai_search(player)
         return false
     end
 
-    if not redis.call('GET', player .. ':ai') then
+    local ai = redis.call('GET', player .. ':ai')
+
+    if not ai or ai == "." then
         return false
     end
 
@@ -176,7 +178,6 @@ for i = 1, #searcher_keys do
         handle_match(region, players)
     else
         if tonumber(redis.call('INCR', player1 .. ':failed_searches')) > 10 then
-
             if redis.call('GET', player1 .. ':ai') ~= "." then
                 redis.call('SET', player1 .. ':fill_with_ai', 1)
             end
