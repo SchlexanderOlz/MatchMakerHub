@@ -14,7 +14,7 @@ local function can_play_together(players)
             return false
         end
 
-        if redis.call('GET', player .. ':ai') then
+        if redis.call('GET', player .. ':ai') or redis.call('GET', player .. 'ai') == '.' then
             return false
         end
 
@@ -30,7 +30,7 @@ local function can_play_together(players)
                 return false
             end
 
-            if redis.call('GET', other .. ':ai') then
+            if redis.call('GET', other .. ':ai') or redis.call('GET', player .. 'ai') == '.' then
                 return false
             end
 
@@ -80,7 +80,7 @@ end
 
 
 local function fill_with_ai(players, max_player_count, preferred_ai)
-    if preferred_ai == "." then
+    if preferred_ai == '.' then
         return
     end
 
