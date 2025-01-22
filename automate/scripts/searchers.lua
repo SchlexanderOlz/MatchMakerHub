@@ -178,14 +178,14 @@ for i = 1, #searcher_keys do
         handle_match(region, players)
     else
         if tonumber(redis.call('INCR', player1 .. ':failed_searches')) > 10 then
-            if redis.call('GET', player1 .. ':ai') ~= "." then
+            if redis.call('GET', player1 .. ':ai') ~= '.' then
                 redis.call('SET', player1 .. ':fill_with_ai', 1)
             end
 
             local all_fill_with_ai = true
 
             for _, player in ipairs(players) do
-                if tonumber(redis.call('GET', player .. ':fill_with_ai')) == 0 then
+                if tonumber(redis.call('GET', player .. ':fill_with_ai')) != 1 then
                     all_fill_with_ai = false
                     break
                 end
