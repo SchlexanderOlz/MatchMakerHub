@@ -94,22 +94,29 @@ fn setup_listeners(
                         match err {
                             HandlerError::PlayerAlreadyPlaying(active_match) => {
                                 let player_id = handler.get_user_id().unwrap();
-                                handler.notify_match_found(&socket, Match::from_active_match(active_match, &player_id));
+                                handler.notify_match_found(
+                                    &socket,
+                                    Match::from_active_match(active_match, &player_id),
+                                );
                                 return;
                             }
-                            _ => socket.emit("error", &err.to_string()).ok()
+                            _ => socket.emit("error", &err.to_string()).ok(),
                         };
                         return;
                     }
 
                     init_notify_on_match();
 
-                    socket.on_disconnect(move |socket: SocketRef| {
+                    let stop_search = move |socket: SocketRef| {
                         info!("Socket.IO disconnected: {:?}", socket.id);
                         if let Err(err) = handler.remove_searcher() {
                             error!("Error removing searcher: {:?}", err);
                         }
-                    });
+                    };
+
+                    socket.on_disconnect(stop_search.clone());
+
+                    socket.on("stop_search", stop_search);
                 }
             });
 
@@ -257,7 +264,7 @@ mod tests {
             game: "SchnapsenTest".to_string(),
             mode: "duo".to_string(),
             ai: None,
-            allow_reconnect: false
+            allow_reconnect: false,
         };
 
         socket
@@ -324,7 +331,7 @@ mod tests {
             game: "Schnapsen".to_string(),
             mode: "duo".to_string(),
             ai: None,
-            allow_reconnect: false
+            allow_reconnect: false,
         };
 
         let search = make_search();
