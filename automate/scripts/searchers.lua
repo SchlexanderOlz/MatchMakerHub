@@ -185,7 +185,7 @@ for i = 1, #searcher_keys do
             local all_fill_with_ai = true
 
             for _, player in ipairs(players) do
-                if tonumber(redis.call('GET', player .. ':fill_with_ai')) != 1 then
+                if tonumber(redis.call('GET', player .. ':fill_with_ai')) ~= 1 then
                     all_fill_with_ai = false
                     break
                 end
