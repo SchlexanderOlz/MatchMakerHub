@@ -64,7 +64,6 @@ where
 /// Uses lapin to communicate over AMQP-Messages and Channels
 pub struct RabbitMQCommunicator {
     channel: Arc<Channel>,
-    uuid: String,
     queues: HashMap<String, HashMap<String, String>>,
 }
 
@@ -112,7 +111,6 @@ impl RabbitMQCommunicator {
 
         Self {
             channel,
-            uuid: uuid::Uuid::new_v4().to_string(),
             queues: Self::load_default_queues(),
         }
     }
@@ -206,36 +204,12 @@ impl super::Communicator for RabbitMQCommunicator {
             move |channel, delivery| {
                 let callback = callback.clone();
                 async move {
-                    let reply_to = match delivery.properties.reply_to() {
-                        Some(reply_to) => reply_to.clone(),
-                        None => {
-                            delivery
-                                .nack(BasicNackOptions::default())
-                                .await
-                                .expect("nack");
-                            return;
-                        }
-                    };
-                    debug!("Received game created event: {:?}", delivery);
                     delivery.ack(BasicAckOptions::default()).await.expect("ack");
-
-                    let channel = channel.clone();
 
                     let created_game: GameServerCreate =
                         serde_json::from_slice(&delivery.data).unwrap();
 
-                    let game_id = callback(created_game).await;
-
-                    channel
-                        .basic_publish(
-                            "",
-                            reply_to.as_str(),
-                            BasicPublishOptions::default(),
-                            game_id.as_bytes(),
-                            BasicProperties::default(),
-                        )
-                        .await
-                        .unwrap();
+                    callback(created_game).await;
                 }
             },
         )
@@ -310,24 +284,7 @@ impl super::Communicator for RabbitMQCommunicator {
     async fn create_game(
         &self,
         game_server: &GameServerCreate,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let reply_to = self
-            .channel
-            .queue_declare("", QueueDeclareOptions::default(), FieldTable::default())
-            .await
-            .unwrap();
-
-        let mut consumer = self
-            .channel
-            .basic_consume(
-                reply_to.name().as_str(),
-                format!("{}@create_game", uuid::Uuid::new_v4()).as_str(),
-                BasicConsumeOptions::default(),
-                FieldTable::default(),
-            )
-            .await
-            .unwrap();
-
+    ) -> Result<(), Box<dyn std::error::Error>> {
         self.channel
             .basic_publish(
                 "",
@@ -335,25 +292,10 @@ impl super::Communicator for RabbitMQCommunicator {
                 BasicPublishOptions::default(),
                 &serde_json::to_vec(&game_server).unwrap(),
                 BasicProperties::default()
-                    .with_reply_to(reply_to.name().clone())
-                    .with_correlation_id(uuid::Uuid::new_v4().to_string().into()),
             )
             .await
             .unwrap();
-
-        while let Some(delivery) = consumer.next().await {
-            let delivery = delivery.unwrap();
-            delivery.ack(BasicAckOptions::default()).await.expect("ack");
-
-            let server_id = std::string::String::from_utf8(delivery.data).unwrap();
-            self.channel
-                .queue_purge(reply_to.name().as_str(), QueuePurgeOptions::default())
-                .await
-                .unwrap();
-            return Ok(server_id);
-        }
-
-        Err("Could not create game".into())
+        Ok(())
     }
 
     async fn create_match(&self, match_request: &CreateMatch) {

@@ -101,7 +101,7 @@ where
     async fn create_game(
         &self,
         game_server: &GameServerCreate,
-    ) -> Result<String, Box<dyn std::error::Error>>;
+    ) -> Result<(), Box<dyn std::error::Error>>;
 
     /// Sends a health check to the specified client.
     ///
