@@ -38,32 +38,24 @@ async fn get_active_matches(
     ),
     params(
         ("session_token" = String, Path, description = "Session token of user"),
-        ("read" = String, Path, description = "Write token of the match"),
     )
 )]
-#[delete("/{read}/{session_token}")]
+#[delete("/{session_token}")]
 async fn leave(
     req: HttpRequest,
     state: web::Data<gn_matchmaking_state::adapters::redis::RedisAdapterDefault>,
     session_token: web::Path<String>,
-    read: web::Path<String>,
 ) -> Result<HttpResponse, Error> {
     let validation = ezauth::validate_user(&session_token, &super::EZAUTH_URL).await?;
 
     let mut filter = ActiveMatchFilter::default();
     filter.player = Some(validation._id.clone());
-    filter.read = Some(read.clone());
 
     let matches: Vec<ActiveMatchDB> =
         super::filter::<_, ActiveMatchDB, _>((*state).clone(), &filter).await?;
-    let write = matches
-        .first()
-        .ok_or_else(|| actix_web::error::ErrorNotFound("No active matches found".to_string()))?
-        .player_write
-        .get(&validation._id);
 
-    if let Some(write) = write {
-        state.remove(matches.first().unwrap().uuid.as_str()).map_err(|e| {
+    for r#match in matches {
+        state.remove(r#match.uuid.as_str()).map_err(|e| {
             actix_web::error::ErrorInternalServerError(format!("Failed to remove match: {}", e))
         })?;
     }
