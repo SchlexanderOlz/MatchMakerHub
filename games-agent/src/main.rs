@@ -3,6 +3,7 @@ use gn_communicator::Communicator;
 use gn_ranking_client_rs::RankingClient;
 use lazy_static::lazy_static;
 use models::{AIPlayerMaker, GameServerMaker, MatchResultMaker};
+use serde_json::{Map, Value};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -107,12 +108,23 @@ async fn on_match_result(
                 return;
             }
 
-            let request = gn_ranking_client_rs::models::create::ReplayData {
-                match_id: result.match_id.clone(),
-                replay_data: serde_json::Value::Array(result.event_log),
+            let replay_data_map: Map<String, Value> = {
+                let mut map = Map::new();
+                map.insert("content".to_string(), Value::Array(result.event_log));
+                map
             };
 
-            ranking_client.match_replay_create(request).await.unwrap();
+            let request = gn_ranking_client_rs::models::create::ReplayData {
+                match_id: result.match_id.clone(),
+                replay_data: Value::Object(replay_data_map),
+            };
+
+            let result = ranking_client.match_replay_create(request).await;
+
+            if let Err(err) = result {
+                error!("Error reporting replay data: {:?}", err);
+                return;
+            } 
 
             debug!(
                 "Match {:?} successfully reported to ranking system",
