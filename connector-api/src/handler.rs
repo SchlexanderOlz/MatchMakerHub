@@ -110,6 +110,12 @@ impl Handler {
             .map(|x| x._id.clone())
     }
 
+    #[inline]
+    pub fn reset(&self) {
+        *self.search.lock().unwrap() = None;
+        *self.search_id.lock().unwrap() = None;
+    }
+
     /// Retrieves the ELO rating for a player.
     ///
     /// # Arguments

@@ -80,6 +80,7 @@ fn setup_listeners(
                             debug!("Match found: {:?}", r#match);
                             handler.notify_match_found(&socket, r#match);
                             debug!("Match found event emitted");
+                            handler.reset();
                         },
                     );
                 }
