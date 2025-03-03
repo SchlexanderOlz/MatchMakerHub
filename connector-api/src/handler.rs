@@ -110,12 +110,6 @@ impl Handler {
             .map(|x| x._id.clone())
     }
 
-    #[inline]
-    pub fn reset(&self) {
-        *self.search.lock().unwrap() = None;
-        *self.search_id.lock().unwrap() = None;
-    }
-
     /// Retrieves the ELO rating for a player.
     ///
     /// # Arguments
@@ -507,8 +501,8 @@ impl Handler {
     ///
     /// A `Result` indicating success or failure.
     pub fn remove_searcher(&self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(search_id) = self.search_id.lock().unwrap().as_deref() {
-            self.state.remove(search_id)?;
+        if let Some(search_id) = self.search_id.lock().unwrap().take() {
+            self.state.remove(&search_id)?;
         }
         *self.search.lock().unwrap() = None;
         Ok(())
@@ -520,7 +514,7 @@ impl Handler {
     ///
     /// A `Result` indicating success or failure.
     pub fn remove_joiner(&self) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(host_id) = self.search_id.lock().unwrap().as_deref() {
+        if let Some(host_id) = self.search_id.lock().unwrap().take() {
             let host_request: HostRequestDB = self.state.get(&host_id)?;
             let mut update = HostRequestUpdate {
                 joined_players: Some(host_request.joined_players.clone()),
