@@ -14,6 +14,7 @@ use crate::models;
     paths(
         super::handler::active_matches::get_active_matches,
         super::handler::active_matches::get_active_match_by_uuid,
+        super::handler::active_matches::leave,
         super::handler::active_matches::get_write_token,
 
         super::handler::game_servers::get_game_servers,

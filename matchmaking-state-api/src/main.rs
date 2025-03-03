@@ -15,6 +15,7 @@ fn config(conf: &mut web::ServiceConfig) {
     let scope = web::scope("/active-matches")
         .service(handler::active_matches::get_active_matches)
         .service(handler::active_matches::get_active_match_by_uuid)
+        .service(handler::active_matches::leave)
         .service(handler::active_matches::get_write_token);
     conf.service(scope);
 
