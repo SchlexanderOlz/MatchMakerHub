@@ -107,6 +107,13 @@ async fn on_match_result(
                 return;
             }
 
+            let request = gn_ranking_client_rs::models::create::ReplayData {
+                match_id: result.match_id.clone(),
+                replay_data: serde_json::Value::Array(result.event_log),
+            };
+
+            ranking_client.match_replay_create(request).await.unwrap();
+
             debug!(
                 "Match {:?} successfully reported to ranking system",
                 match_.uuid
