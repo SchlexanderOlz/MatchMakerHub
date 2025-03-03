@@ -6,7 +6,7 @@ use gn_matchmaking_state::{
     prelude::{Gettable, RedisAdapterDefault},
 };
 use gn_matchmaking_state_types::{DBGameServer, GameServerUpdater};
-use tracing::debug;
+use tracing::{debug, error};
 
 pub struct HealthCheck {
     pub connection: Arc<RedisAdapterDefault>,
@@ -34,13 +34,18 @@ impl HealthCheck {
             let mut update = GameServerUpdater::default();
             update.healthy = Some(true);
 
-            let client_db_id = self
+            let server = self
                 .connection
                 .all()
                 .unwrap()
-                .find(|v: &DBGameServer| v.server_priv == client_id)
-                .unwrap()
-                .server_priv;
+                .find(|v: &DBGameServer| v.server_priv == client_id);
+            
+            if server.is_none() {
+                error!("Tried to refresh a non-existant server");
+                return;
+            }
+
+            let client_db_id = server.unwrap().server_priv;
             let _ = self.connection.update(&client_db_id, update);
         }
     }
