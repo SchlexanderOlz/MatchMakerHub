@@ -33,7 +33,7 @@ lazy_static! {
 async fn create_game_chat(players: Vec<String>) -> String {
     let mut body = HashMap::new();
 
-    body.insert("userids", players);
+    body.insert("user_ids", players);
 
     reqwest::Client::new()
         .post(std::env::var("CHAT_REGISTER_URL").unwrap())
