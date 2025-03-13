@@ -186,6 +186,7 @@ pub struct ActiveMatch {
     pub region: String,
     pub read: String,
     pub player_write: HashMap<String, String>,
+    pub chat_id: String
 }
 
 #[derive(Debug, Clone, RedisOutputReader, RedisIdentifiable)]
@@ -201,6 +202,7 @@ pub struct ActiveMatchDB {
     pub region: String,
     pub read: String,
     pub player_write: HashMap<String, String>,
+    pub chat_id: String
 }
 
 #[derive(Debug, Clone, RedisInsertWriter, RedisIdentifiable)]
