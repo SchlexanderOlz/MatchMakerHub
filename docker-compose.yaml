@@ -94,13 +94,15 @@ services:
       - DEBUG=${DEBUG}
 
   redis:
-    image: redis:latest
+    image: 'docker.dragonflydb.io/dragonflydb/dragonfly'
     container_name: redis
+    ulimits:
+      memlock: -1
     ports:
       - "6379:6379"
     networks:
       - game-night-network
-
+  
   rabbitmq:
     image: rabbitmq:management
     container_name: rabbitmq
