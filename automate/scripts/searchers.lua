@@ -10,7 +10,7 @@ local function can_play_together(players)
     for i = 1, #players do
         local player = players[i]
 
-        if redis.call('EXISTS', player .. ':matching') == 1 and tonumber(redis.call('GET', player .. ':matching')) == 1 then
+        if tonumber(redis.call('EXISTS', player .. ':matching')) == 1 and tonumber(redis.call('GET', player .. ':matching')) == 1 then
             return false
         end
 
@@ -26,7 +26,7 @@ local function can_play_together(players)
         for j = i + 1, #players do
             local other = players[j]
 
-            if redis.call('EXISTS', other .. ':matching') == 1 and tonumber(redis.call('GET', other .. ':matching')) == 1 then
+            if tonumber(redis.call('EXISTS', other .. ':matching')) == 1 and tonumber(redis.call('GET', other .. ':matching')) == 1 then
                 return false
             end
 
@@ -117,7 +117,7 @@ local function fill_with_ai(players, max_player_count, preferred_ai)
 end
 
 local function check_for_ai_search(player)
-    if redis.call('EXISTS', player .. ':matching') == 1 and tonumber(redis.call('GET', player .. ':matching')) == 1 then
+    if tonumber(redis.call('EXISTS', player .. ':matching')) == 1 and tonumber(redis.call('GET', player .. ':matching')) == 1 then
         return false
     end
 
@@ -174,7 +174,7 @@ for i = 1, #searcher_keys do
             local all_fill_with_ai = true
 
             for _, player in ipairs(players) do
-                if redis.call('EXISTS', player .. ':fill_with_ai') == 0 or tonumber(redis.call('GET', player .. ':fill_with_ai')) ~= 1 then
+                if tonumber(redis.call('EXISTS', player .. ':fill_with_ai')) == 0 or tonumber(redis.call('GET', player .. ':fill_with_ai')) ~= 1 then
                     all_fill_with_ai = false
                     break
                 end
@@ -199,7 +199,7 @@ end
 searcher_keys = redis.call('KEYS', '*:host_requests')
 
 local function check_for_start(searcher)
-    if redis.call('EXISTS', searcher .. ':matching') == 1 and tonumber(redis.call('GET', searcher .. ':matching')) == 1 then
+    if tonumber(redis.call('EXISTS', searcher .. ':matching')) == 1 and tonumber(redis.call('GET', searcher .. ':matching')) == 1 then
         return false
     end
 
