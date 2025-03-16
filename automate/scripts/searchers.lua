@@ -2,7 +2,7 @@
 local searcher_keys = redis.call('KEYS', '*:searchers')
 local ai_players = redis.call('KEYS', '*:ai_players')
 
-local max_elo_diff = 10000 -- TODO: Change this to the actuall value found in the config struct
+local max_elo_diff = 10000 -- TODO: Change this to the actual value found in the config struct
 
 -- TODO: This function can be optimized by assuming only 2 players. Review this later
 
@@ -10,11 +10,11 @@ local function can_play_together(players)
     for i = 1, #players do
         local player = players[i]
 
-        if tonumber(redis.call('GET', player .. ':matching')) == 1 then
+        if redis.call('EXISTS', player .. ':matching') == 1 and tonumber(redis.call('GET', player .. ':matching')) == 1 then
             return false
         end
 
-        if redis.call('GET', player .. ':ai') and redis.call('GET', player .. ':ai') ~= '.' then
+        if redis.call('EXISTS', player .. ':ai') == 1 and redis.call('GET', player .. ':ai') ~= '.' then
             return false
         end
 
@@ -26,14 +26,13 @@ local function can_play_together(players)
         for j = i + 1, #players do
             local other = players[j]
 
-            if tonumber(redis.call('GET', other .. ':matching')) == 1 then
+            if redis.call('EXISTS', other .. ':matching') == 1 and tonumber(redis.call('GET', other .. ':matching')) == 1 then
                 return false
             end
 
-            if redis.call('GET', other .. ':ai') and redis.call('GET', player .. ':ai') ~= '.' then
+            if redis.call('EXISTS', other .. ':ai') == 1 and redis.call('GET', other .. ':ai') ~= '.' then
                 return false
             end
-
 
             if redis.call('GET', other .. ':game') ~= player_game then
                 return false
@@ -55,29 +54,24 @@ local function can_play_together(players)
     return true
 end
 
-
 local function publish_new_match(region, player_ids, mode, game, ai)
     local uuid = redis.call('INCR', 'uuid_inc')
 
     redis.call('PUBLISH', uuid .. ':match:region', region)
     for y, other in ipairs(player_ids) do
         redis.call('SET', other .. ':matching', 1)
-
         redis.call('PUBLISH', uuid .. ':match:players:' .. tostring(y), other)
     end
 
     redis.call('PUBLISH', uuid .. ':match:mode', mode)
     redis.call('PUBLISH', uuid .. ':match:game', game)
     redis.call('PUBLISH', uuid .. ':match:ai', ai)
-
     redis.call('PUBLISH', uuid .. ':match:done', #player_ids)
 end
 
-
 local function handle_match(region, players)
-    publish_new_match(region, players, redis.call('GET', players[1] .. ':mode'), redis.call('GET', players[1] .. ':game'), redis.call('GET', players[1] .. ':ai') ~= nil and 1 or 0)
+    publish_new_match(region, players, redis.call('GET', players[1] .. ':mode'), redis.call('GET', players[1] .. ':game'), redis.call('EXISTS', players[1] .. ':ai') == 1 and 1 or 0)
 end
-
 
 local function fill_with_ai(players, max_player_count, preferred_ai)
     if preferred_ai == '.' then
@@ -90,7 +84,6 @@ local function fill_with_ai(players, max_player_count, preferred_ai)
     local mode = redis.call('GET', players[1] .. ':mode')
 
     local eligable_ai = {}
-
 
     if preferred_ai ~= '*' then
         for j = 1, #ai_players do
@@ -110,11 +103,9 @@ local function fill_with_ai(players, max_player_count, preferred_ai)
         end
     end
 
-
     if #eligable_ai == 0 then
         return
     end
-
 
     for i = #players + 1, max_player_count do
         math.randomseed(redis.call('TIME')[1])
@@ -126,7 +117,7 @@ local function fill_with_ai(players, max_player_count, preferred_ai)
 end
 
 local function check_for_ai_search(player)
-    if tonumber(redis.call('GET', player .. ':matching')) == 1 then
+    if redis.call('EXISTS', player .. ':matching') == 1 and tonumber(redis.call('GET', player .. ':matching')) == 1 then
         return false
     end
 
@@ -151,8 +142,6 @@ for i = 1, #searcher_keys do
     local player = searcher_keys[i]
     check_for_ai_search(player)
 end
-
-
 
 -- Match all non-ai players
 for i = 1, #searcher_keys do
@@ -185,7 +174,7 @@ for i = 1, #searcher_keys do
             local all_fill_with_ai = true
 
             for _, player in ipairs(players) do
-                if tonumber(redis.call('GET', player .. ':fill_with_ai')) ~= 1 then
+                if redis.call('EXISTS', player .. ':fill_with_ai') == 0 or tonumber(redis.call('GET', player .. ':fill_with_ai')) ~= 1 then
                     all_fill_with_ai = false
                     break
                 end
@@ -207,15 +196,14 @@ for i = 1, #searcher_keys do
 end
 
 -- Check for hosts
-
 searcher_keys = redis.call('KEYS', '*:host_requests')
 
 local function check_for_start(searcher)
-    if tonumber(redis.call('GET', searcher .. ':matching')) then
+    if redis.call('EXISTS', searcher .. ':matching') == 1 and tonumber(redis.call('GET', searcher .. ':matching')) == 1 then
         return false
     end
 
-    if tonumber(redis.call('GET', searcher .. ':start_requested')) == 0 then
+    if redis.call('EXISTS', searcher .. ':start_requested') == 0 or tonumber(redis.call('GET', searcher .. ':start_requested')) == 0 then
         return false
     end
 
@@ -234,11 +222,8 @@ local function check_for_start(searcher)
 
     local region = redis.call('GET', searcher .. ':region')
 
-
     publish_new_match(region, players, redis.call('GET', searcher .. ':mode'), redis.call('GET', searcher .. ':game'), 0)
-
 end
-
 
 for i = 1, #searcher_keys do
     local searcher = searcher_keys[i]
