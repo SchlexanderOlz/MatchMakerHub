@@ -1,3 +1,4 @@
+--!df flags=allow-undeclared-keys,disable-atomicity
 -- Lua script to find matches and publish to a channel
 local searcher_keys = redis.call('KEYS', '*:searchers')
 local ai_players = redis.call('KEYS', '*:ai_players')
