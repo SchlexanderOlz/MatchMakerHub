@@ -43,7 +43,7 @@ where {
 
         let matchmaker_copy = instance.clone();
 
-        let connection_clone: Arc<RedisAdapter<_>> = connection.clone();
+        let connection_clone = connection.clone();
         ActiveMatch::on_insert(&connection, move |uuid: String| {
             debug!("New match created with uuid: {}", uuid);
             let new: ActiveMatchDB = connection_clone.get(&uuid).unwrap();
