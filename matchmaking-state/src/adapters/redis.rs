@@ -480,7 +480,6 @@ where
 }
 
 impl<I> Matcher for RedisAdapter<I> {
-    // NOTE: This function is a temporary inefficient implementation and will be migrated to a server-side lua script using channels
     fn on_match<T>(&self, handler: T)
     where
         T: Send + Sync + 'static + Fn(Match) -> (),

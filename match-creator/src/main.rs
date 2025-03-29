@@ -74,7 +74,7 @@ async fn main() {
     info!("Started match check");
 
     let match_checker = connector.clone();
-    connector.clone().on_match(move |new_match| {
+    connector.clone().on_match(move |new_match: Match| {
         info!("New match: {:?}", new_match);
 
         let connector = connector.clone();
