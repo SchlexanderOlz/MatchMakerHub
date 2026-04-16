@@ -6,6 +6,10 @@ on:
     paths:
       - matchmaking-state/redisadapter-derive/Cargo.toml
       - matchmaking-state/redisadapter-derive/src/**
+  workflow_call:
+    secrets:
+      CARGO_REGISTRY_TOKEN:
+        required: true
 
 jobs:
   publish:
