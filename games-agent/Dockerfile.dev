@@ -1,8 +1,22 @@
 FROM rust:latest
 
 WORKDIR /usr/games-agent
-COPY . .
+
+# 1. Copy only manifests — this layer is stable across source-only changes
+COPY Cargo.toml Cargo.lock build.rs ./
+
+# 2. Stub entry point so cargo can resolve and compile all crates.io dependencies
+RUN mkdir -p src && echo 'fn main() {}' > src/main.rs
 RUN cargo build
+
+# 3. Remove the stub artifact so cargo doesn't use it for the real build
+RUN rm -f target/debug/deps/games_agent* target/debug/games_agent*
+
+# 4. Copy real source — only this layer re-runs on src/ changes
+COPY src ./src
+RUN cargo build
+
+COPY entrypoint.dev.sh ./
 RUN chmod +x entrypoint.dev.sh
 
 ENTRYPOINT ["./entrypoint.dev.sh"]

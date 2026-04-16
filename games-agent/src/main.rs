@@ -147,23 +147,26 @@ async fn on_match_result(
         #[cfg(not(disable_ranking))]
         {
             debug!("Match {:?} removed", match_.uuid);
-            if let Err(err) = report_match_result(result.clone(), match_.clone()).await {
-                error!("Error reporting match result: {:?}", err);
-                return;
-            }
-
-            let replay_data_map: Map<String, Value> = {
-                let mut map = Map::new();
-                map.insert("content".to_string(), Value::Array(result.event_log));
-                map
+            let ranking_match = match report_match_result(result.clone(), match_.clone()).await {
+                Ok(m) => m,
+                Err(err) => {
+                    error!("Error reporting match result: {:?}", err);
+                    return;
+                }
             };
 
+            let mut replay_data_map = Map::new();
+            replay_data_map.insert("replay".to_string(), Value::Array(result.event_log));
+
             let request = gn_ranking_client_rs::models::create::ReplayData {
-                match_id: result.match_id.clone(),
+                match_id: ranking_match._id.clone(),
                 replay_data: Value::Object(replay_data_map),
             };
 
+
             let result = ranking_client.match_replay_create(request).await;
+
+            debug!("Inserted replay data at ranking for match {}", ranking_match._id);
 
             if let Err(err) = result {
                 error!("Error reporting replay data: {:?}", err);
