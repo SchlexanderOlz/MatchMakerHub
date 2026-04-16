@@ -11,10 +11,18 @@ services:
     command: connector-api
     ports:
       - "4000:4000"
-    restart: on-failure
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4000/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     depends_on:
-      - redis
-      - rabbitmq
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
       - REDIS_URL=redis://redis:6379
       - EZAUTH_URL=${EZAUTH_URL}
@@ -29,10 +37,12 @@ services:
       context: ./match-creator
     container_name: match-creator
     command: match-creator
-    restart: on-failure
+    restart: unless-stopped
     depends_on:
-      - redis
-      - rabbitmq
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
       - REDIS_URL=redis://redis:6379
       - AMQP_URL=${AMQP_URL}
@@ -48,10 +58,12 @@ services:
         - DEBUG=${DEBUG}
     container_name: games-agent
     command: games-agent
-    restart: on-failure
+    restart: unless-stopped
     depends_on:
-      - redis
-      - rabbitmq
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     environment:
       - REDIS_URL=redis://redis:6379
       - AMQP_URL=${AMQP_URL}
@@ -65,11 +77,18 @@ services:
       context: ./matchmaking-state-api
     container_name: matchmaking-state-api
     command: matchmaking-state-api
-    restart: on-failure
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6969/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     ports:
       - "6969:6969"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     environment:
       - REDIS_URL=redis://redis:6379
       - HOST_URL=0.0.0.0:6969
@@ -83,9 +102,10 @@ services:
       context: ./automate
     container_name: automate
     command: "python auto.py"
-    restart: on-failure
+    restart: unless-stopped
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     networks:
       - game-night-network
     environment:
@@ -97,16 +117,30 @@ services:
   redis:
     image: 'docker.dragonflydb.io/dragonflydb/dragonfly'
     container_name: redis
+    restart: unless-stopped
     ulimits:
       memlock: -1
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - game-night-network
-  
+
   rabbitmq:
     image: rabbitmq:management
     container_name: rabbitmq
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     environment:
       - RABBITMQ_DEFAULT_USER=admin
       - RABBITMQ_DEFAULT_PASS=Password1
