@@ -32,7 +32,7 @@ async fn try_connect(amqp_url: &str) -> Connection {
 async fn setup_queue_and_listen<F, Fut>(amqp_url: String, queue_name: String, on_message: F)
 where
     F: Fn(Delivery) -> Fut + Send + Sync + Clone + 'static,
-    Fut: Future<Output = ()> + Send + Sync + 'static,
+    Fut: Future<Output = ()> + Send + 'static,
 {
     tokio::spawn(async move {
         loop {
@@ -168,7 +168,7 @@ impl super::Communicator for RabbitMQCommunicator {
     async fn on_match_abrupt_close<F, Fut>(&self, callback: F)
     where
         F: MessageHandler<MatchAbrubtClose, Fut>,
-        Fut: Future<Output = ()> + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
     {
         let queue = self.get_queue_name("match", "abrupt_close").to_string();
         setup_queue_and_listen(self.amqp_url.clone(), queue, move |delivery| {
@@ -188,7 +188,7 @@ impl super::Communicator for RabbitMQCommunicator {
     async fn on_game_create<F, Fut>(&self, callback: F)
     where
         F: MessageHandler<crate::models::GameServerCreate, Fut>,
-        Fut: Future<Output = String> + Send + Sync + 'static,
+        Fut: Future<Output = String> + Send + 'static,
     {
         let queue = self.get_queue_name("game", "create").to_string();
         setup_queue_and_listen(self.amqp_url.clone(), queue, move |delivery| {
@@ -209,7 +209,7 @@ impl super::Communicator for RabbitMQCommunicator {
     async fn on_match_created<F, Fut>(&self, callback: F)
     where
         F: MessageHandler<crate::models::CreatedMatch, Fut>,
-        Fut: Future<Output = ()> + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
     {
         let queue = self.get_queue_name("match", "created").to_string();
         setup_queue_and_listen(self.amqp_url.clone(), queue, move |delivery| {
@@ -229,7 +229,7 @@ impl super::Communicator for RabbitMQCommunicator {
     async fn on_match_result<F, Fut>(&self, callback: F)
     where
         F: MessageHandler<crate::models::MatchResult, Fut>,
-        Fut: Future<Output = ()> + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
     {
         let queue = self.get_queue_name("match", "result").to_string();
         setup_queue_and_listen(self.amqp_url.clone(), queue, move |delivery| {
@@ -249,7 +249,7 @@ impl super::Communicator for RabbitMQCommunicator {
     async fn on_match_create<F, Fut>(&self, callback: F)
     where
         F: MessageHandler<crate::models::CreateMatch, Fut>,
-        Fut: Future<Output = ()> + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
     {
         let queue = self.get_queue_name("match", "create").to_string();
         setup_queue_and_listen(self.amqp_url.clone(), queue, move |delivery| {
@@ -329,7 +329,7 @@ impl super::Communicator for RabbitMQCommunicator {
     async fn on_health_check<F, Fut>(&self, callback: F)
     where
         F: MessageHandler<String, Fut>,
-        Fut: Future<Output = ()> + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
     {
         let queue = self.get_queue_name("health_check", "check").to_string();
         setup_queue_and_listen(self.amqp_url.clone(), queue, move |delivery| {
@@ -350,7 +350,7 @@ impl super::Communicator for RabbitMQCommunicator {
     async fn on_ai_register<F, Fut>(&self, callback: F)
     where
         F: MessageHandler<crate::models::AIPlayerRegister, Fut>,
-        Fut: Future<Output = ()> + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
     {
         let queue = self.get_queue_name("ai", "register").to_string();
         setup_queue_and_listen(self.amqp_url.clone(), queue, move |delivery| {

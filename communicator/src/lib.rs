@@ -27,7 +27,7 @@ where
     async fn on_match_abrupt_close<F, Fut>(&self, callback: F)
     where
         F: MessageHandler<MatchAbrubtClose, Fut>,
-        Fut: Future<Output = ()> + Send + Sync + 'static;
+        Fut: Future<Output = ()> + Send + 'static;
 
     /// Registers a callback for when a match result is reported.
     ///
@@ -37,7 +37,7 @@ where
     async fn on_match_result<F, Fut>(&self, callback: F)
     where
         F: MessageHandler<MatchResult, Fut>,
-        Fut: Future<Output = ()> + Send + Sync + 'static;
+        Fut: Future<Output = ()> + Send + 'static;
 
     /// Registers a callback for when a match is created.
     ///
@@ -47,7 +47,7 @@ where
     async fn on_match_created<F, Fut>(&self, callback: F)
     where
         F: MessageHandler<CreatedMatch, Fut>,
-        Fut: Future<Output = ()> + Send + Sync + 'static;
+        Fut: Future<Output = ()> + Send + 'static;
 
     /// Registers a callback for when a game server is created.
     ///
@@ -57,7 +57,7 @@ where
     async fn on_game_create<F, Fut>(&self, callback: F)
     where
         F: MessageHandler<GameServerCreate, Fut>,
-        Fut: Future<Output = String> + Send + Sync + 'static;
+        Fut: Future<Output = String> + Send + 'static;
 
     /// Registers a callback for health check events.
     ///
@@ -67,7 +67,7 @@ where
     async fn on_health_check<F, Fut>(&self, callback: F)
     where
         F: MessageHandler<String, Fut>,
-        Fut: Future<Output = ()> + Send + Sync + 'static;
+        Fut: Future<Output = ()> + Send + 'static;
 
     /// Registers a callback for when a match creation request is received.
     ///
@@ -77,7 +77,7 @@ where
     async fn on_match_create<F, Fut>(&self, callback: F)
     where
         F: MessageHandler<CreateMatch, Fut>,
-        Fut: Future<Output = ()> + Send + Sync + 'static;
+        Fut: Future<Output = ()> + Send + 'static;
 
     /// Registers a callback for when a new ai-player is registered.
     ///
@@ -87,7 +87,7 @@ where
     async fn on_ai_register<F, Fut>(&self, callback: F)
     where
         F: MessageHandler<AIPlayerRegister, Fut>,
-        Fut: Future<Output = ()> + Send + Sync + 'static;
+        Fut: Future<Output = ()> + Send + 'static;
 
     /// Creates a game on the game server.
     ///
