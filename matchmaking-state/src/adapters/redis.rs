@@ -330,7 +330,7 @@ where
             .into_iter()
             .collect::<Vec<String>>();
 
-        redis::transaction(&mut connection, iter.as_slice(), |conn, pipe| {
+        redis::transaction::<_, _, (), _>(&mut connection, iter.as_slice(), |conn, pipe| {
             iter.iter().for_each(|key| {
                 pipe.del(key).ignore();
             });
@@ -367,7 +367,7 @@ where
 
         'query: {
             let mut connection = self.connection.lock().unwrap();
-            pipe.query(&mut connection)?;
+            pipe.query::<()>(&mut connection)?;
 
             if self.publisher.is_none() {
                 break 'query;
@@ -467,7 +467,7 @@ where
         data.clone().update(&mut pipe, uuid)?;
 
         let mut connection = self.connection.lock().unwrap();
-        pipe.query(&mut connection)?;
+        pipe.query::<()>(&mut connection)?;
 
         if let Some(publisher) = self.publisher.as_ref() {
             publisher

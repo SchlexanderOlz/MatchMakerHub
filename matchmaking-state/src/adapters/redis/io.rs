@@ -119,7 +119,7 @@ where
         connection: &mut redis::Connection,
         channel: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        connection.publish(channel, self)?;
+        connection.publish::<_, _, ()>(channel, self)?;
         Ok(())
     }
 }

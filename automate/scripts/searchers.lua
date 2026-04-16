@@ -5,6 +5,8 @@ local ai_players = redis.call('KEYS', '*:ai_players')
 
 local max_elo_diff = 10000 -- TODO: Change this to the actual value found in the config struct
 
+local matches = {}
+
 -- TODO: This function can be optimized by assuming only 2 players. Review this later
 
 local function can_play_together(players)
@@ -68,6 +70,7 @@ local function publish_new_match(region, player_ids, mode, game, ai)
     redis.call('PUBLISH', uuid .. ':match:game', game)
     redis.call('PUBLISH', uuid .. ':match:ai', ai)
     redis.call('PUBLISH', uuid .. ':match:done', #player_ids)
+    table.insert(matches, {game, #player_ids})
 end
 
 local function handle_match(region, players)
@@ -197,6 +200,7 @@ for i = 1, #searcher_keys do
 end
 
 -- Check for hosts
+local initial_searcher_count = #searcher_keys
 searcher_keys = redis.call('KEYS', '*:host_requests')
 
 local function check_for_start(searcher)
@@ -231,3 +235,5 @@ for i = 1, #searcher_keys do
 
     check_for_start(searcher)
 end
+
+return {initial_searcher_count, matches}

@@ -1,4 +1,8 @@
 FROM rust:latest
 
-WORKDIR /usr/match-creator
+WORKDIR /usr/connector-api
 COPY . .
+RUN cargo build
+RUN chmod +x entrypoint.dev.sh
+
+ENTRYPOINT ["./entrypoint.dev.sh"]

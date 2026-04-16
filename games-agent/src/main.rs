@@ -357,7 +357,9 @@ async fn listen_for_ai_player_register(conn: Arc<RedisAdapterDefault>) {
             move |ai_player: gn_communicator::models::AIPlayerRegister| {
                 let conn = conn.clone();
                 async move {
-                    save_ai_player(ai_player, conn.clone()).await.unwrap();
+                    if let Err(e) = save_ai_player(ai_player, conn.clone()).await {
+                        error!("Failed to save AI player: {}", e);
+                    }
                 }
             },
         )

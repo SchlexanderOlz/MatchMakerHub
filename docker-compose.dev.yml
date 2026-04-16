@@ -6,7 +6,7 @@ services:
       context: ./connector-api
       dockerfile: Dockerfile.dev
     container_name: connector-api
-    command: cargo run
+
     ports:
       - "4000:4000"
     volumes:
@@ -32,7 +32,7 @@ services:
       context: ./match-creator
       dockerfile: Dockerfile.dev
     container_name: match-creator
-    command: cargo run
+
     volumes:
       - ./matchmaking-state:/usr/matchmaking-state
       - "./matchmaking-state-types:/usr/matchmaking-state-types"
@@ -51,7 +51,7 @@ services:
       context: ./games-agent
       dockerfile: Dockerfile.dev
     container_name: games-agent
-    command: cargo run
+
     volumes:
       - ./matchmaking-state:/usr/matchmaking-state
       - ./matchmaking-state-types:/usr/matchmaking-state-types
@@ -74,7 +74,7 @@ services:
       context: ./matchmaking-state-api
       dockerfile: Dockerfile.dev
     container_name: matchmaking-state-api
-    command: cargo run
+
     restart: on-failure
     ports:
       - "6969:6969"
