@@ -1,0 +1,153 @@
+name: Publish
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  # ── Detect which packages changed ────────────────────────────────────────
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      ezauth:                  ${{ steps.filter.outputs.ezauth }}
+      matchmaking-state-types: ${{ steps.filter.outputs.matchmaking-state-types }}
+      redisadapter-derive:     ${{ steps.filter.outputs.redisadapter-derive }}
+      matchmaking-state:       ${{ steps.filter.outputs.matchmaking-state }}
+      communicator:            ${{ steps.filter.outputs.communicator }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            ezauth:
+              - ezauth/Cargo.toml
+              - ezauth/src/**
+            matchmaking-state-types:
+              - matchmaking-state-types/Cargo.toml
+              - matchmaking-state-types/src/**
+            redisadapter-derive:
+              - matchmaking-state/redisadapter-derive/Cargo.toml
+              - matchmaking-state/redisadapter-derive/src/**
+            matchmaking-state:
+              - matchmaking-state/Cargo.toml
+              - matchmaking-state/src/**
+            communicator:
+              - communicator/Cargo.toml
+              - communicator/src/**
+
+  # ── Leaf libraries (no inter-repo deps) ─────────────────────────────────
+  publish-ezauth:
+    needs: changes
+    if: needs.changes.outputs.ezauth == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ezauth
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check version against crates.io
+        id: check
+        run: |
+          LOCAL=$(grep '^version' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          PUBLISHED=$(curl -sf https://crates.io/api/v1/crates/ezauth \
+            -H 'User-Agent: github-actions publish-check' \
+            | jq -r '.crate.newest_version // "none"')
+          [ "$LOCAL" != "$PUBLISHED" ] && echo "changed=true" >> "$GITHUB_OUTPUT" || echo "changed=false" >> "$GITHUB_OUTPUT"
+      - name: Publish
+        if: steps.check.outputs.changed == 'true'
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  publish-matchmaking-state-types:
+    needs: changes
+    if: needs.changes.outputs.matchmaking-state-types == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: matchmaking-state-types
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check version against crates.io
+        id: check
+        run: |
+          LOCAL=$(grep '^version' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          PUBLISHED=$(curl -sf https://crates.io/api/v1/crates/gn-matchmaking-state-types \
+            -H 'User-Agent: github-actions publish-check' \
+            | jq -r '.crate.newest_version // "none"')
+          [ "$LOCAL" != "$PUBLISHED" ] && echo "changed=true" >> "$GITHUB_OUTPUT" || echo "changed=false" >> "$GITHUB_OUTPUT"
+      - name: Publish
+        if: steps.check.outputs.changed == 'true'
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  publish-redisadapter-derive:
+    needs: changes
+    if: needs.changes.outputs.redisadapter-derive == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: matchmaking-state/redisadapter-derive
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check version against crates.io
+        id: check
+        run: |
+          LOCAL=$(grep '^version' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          PUBLISHED=$(curl -sf https://crates.io/api/v1/crates/gn-redisadapter-derive \
+            -H 'User-Agent: github-actions publish-check' \
+            | jq -r '.crate.newest_version // "none"')
+          [ "$LOCAL" != "$PUBLISHED" ] && echo "changed=true" >> "$GITHUB_OUTPUT" || echo "changed=false" >> "$GITHUB_OUTPUT"
+      - name: Publish
+        if: steps.check.outputs.changed == 'true'
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  # ── matchmaking-state depends on redisadapter-derive ────────────────────
+  publish-matchmaking-state:
+    needs: [changes, publish-redisadapter-derive]
+    if: |
+      always() &&
+      needs.changes.outputs.matchmaking-state == 'true' &&
+      (needs.publish-redisadapter-derive.result == 'success' || needs.publish-redisadapter-derive.result == 'skipped')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: matchmaking-state
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check version against crates.io
+        id: check
+        run: |
+          LOCAL=$(grep '^version' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          PUBLISHED=$(curl -sf https://crates.io/api/v1/crates/gn-matchmaking-state \
+            -H 'User-Agent: github-actions publish-check' \
+            | jq -r '.crate.newest_version // "none"')
+          [ "$LOCAL" != "$PUBLISHED" ] && echo "changed=true" >> "$GITHUB_OUTPUT" || echo "changed=false" >> "$GITHUB_OUTPUT"
+      - name: Publish
+        if: steps.check.outputs.changed == 'true'
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  # ── communicator has no intra-repo deps ─────────────────────────────────
+  publish-communicator:
+    needs: changes
+    if: needs.changes.outputs.communicator == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: communicator
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check version against crates.io
+        id: check
+        run: |
+          LOCAL=$(grep '^version' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          PUBLISHED=$(curl -sf https://crates.io/api/v1/crates/gn-communicator \
+            -H 'User-Agent: github-actions publish-check' \
+            | jq -r '.crate.newest_version // "none"')
+          [ "$LOCAL" != "$PUBLISHED" ] && echo "changed=true" >> "$GITHUB_OUTPUT" || echo "changed=false" >> "$GITHUB_OUTPUT"
+      - name: Publish
+        if: steps.check.outputs.changed == 'true'
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
