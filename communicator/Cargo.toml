@@ -1,6 +1,6 @@
 [package]
 name = "gn-communicator"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2021"
 description = "Component for communication for game-night microservices"
 license = "MIT"
@@ -11,7 +11,7 @@ chrono = "0.4.39"
 serde = { version = "1.0.207", features = ["derive"] }
 serde_json = "1.0.124"
 tracing = "0.1.41"
-tokio = { version = "1.38.1", features = ["rt", "macros", "rt-multi-thread", "time"] }
+tokio = { version = "1.38.1", features = ["rt", "macros", "rt-multi-thread", "time", "sync"] }
 async-trait = "0.1.83"
 lapin = "2.5.0"
 futures-lite = "2.5.0"
