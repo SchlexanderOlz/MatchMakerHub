@@ -185,6 +185,12 @@ fn setup_listeners(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        default_hook(info);
+        std::process::exit(1);
+    }));
+
     dotenv::dotenv().ok();
     let default_redis_url: String = std::env::var("REDIS_URL").unwrap();
 

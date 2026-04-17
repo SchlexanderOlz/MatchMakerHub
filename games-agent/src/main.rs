@@ -371,6 +371,12 @@ async fn listen_for_ai_player_register(conn: Arc<RedisAdapterDefault>) {
 
 #[tokio::main]
 async fn main() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        default_hook(info);
+        std::process::exit(1);
+    }));
+
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::DEBUG)
         .finish();
